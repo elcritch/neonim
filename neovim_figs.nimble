@@ -8,5 +8,6 @@ srcDir        = "src"
 
 requires "nim >= 2.2.6"
 requires "msgpack4nim"
-requires "https://github.com/elcritch/figdraw.git"
+
+requires "figdraw"
 
