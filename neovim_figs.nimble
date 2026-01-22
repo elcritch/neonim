@@ -11,3 +11,6 @@ requires "msgpack4nim"
 
 requires "figdraw"
 
+feature "references":
+  requires "https://github.com/equalsraf/neovim-qt.git"
+
