@@ -260,6 +260,28 @@ iterator paramsIter(params: NimNode): tuple[name, ntype: NimNode] =
     for j in 0 ..< arg.len-2:
       yield (arg[j], argType)
 
+proc isRpcSessionType(paramType: NimNode): bool {.compileTime.} =
+  case paramType.kind
+  of nnkVarTy:
+    result = paramType[0].repr == "RpcSession"
+  of nnkIdent, nnkSym:
+    result = paramType.repr == "RpcSession"
+  else:
+    result = false
+
+proc filterPragmas(pragmas: NimNode, remove: seq[string]): NimNode {.compileTime.} =
+  if pragmas.isNil or pragmas.kind == nnkEmpty:
+    return pragmas
+  var outPragmas = newNimNode(nnkPragma)
+  for child in pragmas:
+    if child.kind in {nnkIdent, nnkSym} and child.repr in remove:
+      continue
+    outPragmas.add child
+  if outPragmas.len == 0:
+    result = newEmptyNode()
+  else:
+    result = outPragmas
+
 proc mkParamsVars(paramsIdent, paramsType, params: NimNode): NimNode =
   ## Create local variables for each parameter in the actual RPC call proc.
   if params.isNil:
@@ -378,6 +400,53 @@ macro rpcImpl*(p: untyped): untyped =
 
 template rpc*(p: untyped): untyped =
   rpcImpl(p)
+
+macro rpcClientImpl*(p: untyped, notify: static[bool]): untyped =
+  let
+    path = $p[0]
+    params = p[3]
+    pragmas = p[4]
+
+  if not params.hasReturnType:
+    error("msgpack rpc: must provide return type")
+  var argSyms = newSeq[NimNode]()
+  var sessionSym: NimNode = nil
+  var idx = 0
+  for paramid, paramType in paramsIter(params):
+    if not notify and idx == 0 and isRpcSessionType(paramType):
+      sessionSym = ident(paramid.strVal)
+    else:
+      argSyms.add ident(paramid.strVal)
+    inc(idx)
+
+  if not notify and sessionSym.isNil:
+    error("msgpack rpc: request procs must take `session: var RpcSession` as the first parameter")
+
+  let paramsCall = newCall(ident("rpcPackParams"), argSyms)
+  var body = newStmtList()
+  if notify:
+    body.add quote do:
+      result = sendNotification(`path`, `paramsCall`)
+  else:
+    body.add quote do:
+      result = startRequest(`sessionSym`, `path`, `paramsCall`)
+
+  let filteredPragmas = filterPragmas(pragmas, @["rpcRequest", "rpcNotify"])
+  result = newTree(nnkProcDef,
+    p[0],
+    newEmptyNode(),
+    newEmptyNode(),
+    params,
+    filteredPragmas,
+    newEmptyNode(),
+    body
+  )
+
+template rpcRequest*(p: untyped): untyped =
+  rpcClientImpl(p, false)
+
+template rpcNotify*(p: untyped): untyped =
+  rpcClientImpl(p, true)
 
 proc feed*(parser: var RpcParser, data: string): seq[RpcMessage] =
   if data.len > 0:

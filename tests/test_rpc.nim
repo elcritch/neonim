@@ -66,6 +66,31 @@ suite "neovim msgpack rpc":
     check resp.error.isNilValue
     check rpcUnpack[int](resp.result) == 12
 
+  test "client rpc macros":
+    proc vim_get_api_info(session: var RpcSession): tuple[id: uint64, data: string] {.rpcRequest.}
+    proc redraw(a: int, b: int): string {.rpcNotify.}
+
+    var session = initRpcSession()
+    let (id, reqData) = vim_get_api_info(session)
+    check id == 1
+    var parser = initRpcParser()
+    let reqMsgs = parser.feed(reqData)
+    check reqMsgs.len == 1
+    check reqMsgs[0].kind == rmRequest
+    check reqMsgs[0].methodName == "vim_get_api_info"
+    let reqParams = rpcUnpack[seq[int]](reqMsgs[0].params)
+    check reqParams.len == 0
+
+    let notifData = redraw(3, 4)
+    let notifMsgs = parser.feed(notifData)
+    check notifMsgs.len == 1
+    check notifMsgs[0].kind == rmNotification
+    check notifMsgs[0].methodName == "redraw"
+    let notifParams = rpcUnpack[seq[int]](notifMsgs[0].params)
+    check notifParams.len == 2
+    check notifParams[0] == 3
+    check notifParams[1] == 4
+
   test "invalid frame errors":
     var s = MsgStream.init(16)
     s.pack_array(2)
