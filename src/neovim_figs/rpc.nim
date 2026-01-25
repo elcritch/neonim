@@ -432,10 +432,13 @@ macro rpcClientImpl*(p: untyped, notify: static[bool]): untyped =
   var body = newStmtList()
   if notify:
     body.add quote do:
-      result = sendNotification(`path`, `paramsCall`)
+      result = newNotification(`path`, `paramsCall`)
   else:
     body.add quote do:
-      result = startRequest(`sessionSym`, `path`, `paramsCall`)
+      let id = `sessionSym`.nextId
+      `sessionSym`.nextId.inc
+      `sessionSym`.pending[id] = `path`
+      result = newRequest(id, `path`, `paramsCall`)
 
   let filteredPragmas = filterPragmas(pragmas, @["rpcRequest", "rpcNotify"])
   result = newTree(nnkProcDef,

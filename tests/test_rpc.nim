@@ -67,26 +67,21 @@ suite "neovim msgpack rpc":
     check rpcUnpack[int](resp.result) == 12
 
   test "client rpc macros":
-    proc vim_get_api_info(session: var RpcSession): tuple[id: uint64, data: string] {.rpcRequest.}
-    proc redraw(a: int, b: int): string {.rpcNotify.}
+    proc vim_get_api_info(session: var RpcSession): RpcMessage {.rpcRequest.}
+    proc redraw(a: int, b: int): RpcMessage {.rpcNotify.}
 
     var session = initRpcSession()
-    let (id, reqData) = vim_get_api_info(session)
-    check id == 1
-    var parser = initRpcParser()
-    let reqMsgs = parser.feed(reqData)
-    check reqMsgs.len == 1
-    check reqMsgs[0].kind == rmRequest
-    check reqMsgs[0].methodName == "vim_get_api_info"
-    let reqParams = rpcUnpack[seq[int]](reqMsgs[0].params)
+    let reqMsg = vim_get_api_info(session)
+    check reqMsg.msgid == 1
+    check reqMsg.kind == rmRequest
+    check reqMsg.methodName == "vim_get_api_info"
+    let reqParams = rpcUnpack[seq[int]](reqMsg.params)
     check reqParams.len == 0
 
-    let notifData = redraw(3, 4)
-    let notifMsgs = parser.feed(notifData)
-    check notifMsgs.len == 1
-    check notifMsgs[0].kind == rmNotification
-    check notifMsgs[0].methodName == "redraw"
-    let notifParams = rpcUnpack[seq[int]](notifMsgs[0].params)
+    let notifMsg = redraw(3, 4)
+    check notifMsg.kind == rmNotification
+    check notifMsg.methodName == "redraw"
+    let notifParams = rpcUnpack[seq[int]](notifMsg.params)
     check notifParams.len == 2
     check notifParams[0] == 3
     check notifParams[1] == 4
@@ -95,15 +90,14 @@ suite "neovim msgpack rpc":
     var router = newRpcRouter()
     proc add(a: int, b: int): int {.rpc.} =
       a + b
-    proc add(session: var RpcSession, a: int, b: int): tuple[id: uint64, data: string] {.rpcClient.}
+    proc add(session: var RpcSession, a: int, b: int): RpcMessage {.rpcClient.}
 
     var session = initRpcSession()
-    let (id, reqData) = add(session, 2, 3)
-    let reqMsg = decodeSingle(reqData)
-    let respData = encodeMessage(router.callMethod(reqMsg))
-    let respMsg = decodeSingle(respData)
+    let reqMsg = add(session, 2, 3)
+
+    let respMsg = router.callMethod(reqMsg)
     check rpcUnpack[int](respMsg.result) == 5
-    check completeRequest(session, id)
+    check completeRequest(session, respMsg.msgid)
 
   test "invalid frame errors":
     var s = MsgStream.init(16)
