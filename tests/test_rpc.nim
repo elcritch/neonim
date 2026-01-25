@@ -1,13 +1,11 @@
 import std/unittest
 import neovim_figs/rpc
 import msgpack4nim
-import msgpack4nim/msgpack2any
 
 suite "neovim msgpack rpc":
   test "request encode/decode":
     var session = initRpcSession()
-    let params: seq[MsgAny] = @[]
-    let (id, data) = startRequest(session, "vim_get_api_info", params)
+    let (id, data) = startRequest(session, "vim_get_api_info", rpcPackParams())
     check id == 1
     let pending = pendingRequests(session)
     check pending.len == 1
@@ -20,41 +18,53 @@ suite "neovim msgpack rpc":
     check msg.kind == rmRequest
     check msg.msgid == 1
     check msg.methodName == "vim_get_api_info"
-    check msg.params.len == 0
+    let params = rpcUnpack[seq[int]](msg.params)
+    check params.len == 0
 
   test "response encode/decode":
-    let data = sendResponse(3, anyNull(), anyString("ok"))
+    let data = sendResponse(3, rpcPackNil(), rpcPack("ok"))
     var parser = initRpcParser()
     let messages = parser.feed(data)
     check messages.len == 1
     let msg = messages[0]
     check msg.kind == rmResponse
     check msg.msgid == 3
-    check msg.error.kind == msgNull
-    check msg.result.kind == msgString
-    check msg.result.stringVal == "ok"
+    check msg.error.isNilValue
+    check rpcUnpack[string](msg.result) == "ok"
 
   test "notification encode/decode":
-    let params = @[anyInt(1), anyInt(2)]
-    let data = sendNotification("redraw", params)
+    let data = sendNotification("redraw", rpcPackParams(1, 2))
     var parser = initRpcParser()
     let messages = parser.feed(data)
     check messages.len == 1
     let msg = messages[0]
     check msg.kind == rmNotification
     check msg.methodName == "redraw"
-    check msg.params.len == 2
-    check msg.params[0].intVal == 1
-    check msg.params[1].intVal == 2
+    let params = rpcUnpack[seq[int]](msg.params)
+    check params.len == 2
+    check params[0] == 1
+    check params[1] == 2
 
   test "incremental parse":
-    let data = sendNotification("incremental", @[anyString("ok")])
+    let data = sendNotification("incremental", rpcPackParams("ok"))
     let mid = data.len div 2
     var parser = initRpcParser()
     check parser.feed(data[0 ..< mid]).len == 0
     let messages = parser.feed(data[mid .. ^1])
     check messages.len == 1
     check messages[0].methodName == "incremental"
+
+  test "router rpc macro":
+    var router = newRpcRouter()
+    proc add(a: int, b: int): int {.rpc.} =
+      a + b
+
+    let req = newRequest(42, "add", rpcPackParams(7, 5))
+    let resp = router.callMethod(req)
+    check resp.kind == rmResponse
+    check resp.msgid == 42
+    check resp.error.isNilValue
+    check rpcUnpack[int](resp.result) == 12
 
   test "invalid frame errors":
     var s = MsgStream.init(16)
