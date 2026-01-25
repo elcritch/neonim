@@ -445,6 +445,9 @@ macro rpcClientImpl*(p: untyped, notify: static[bool]): untyped =
 template rpcRequest*(p: untyped): untyped =
   rpcClientImpl(p, false)
 
+template rpcClient*(p: untyped): untyped =
+  rpcClientImpl(p, false)
+
 template rpcNotify*(p: untyped): untyped =
   rpcClientImpl(p, true)
 

@@ -91,6 +91,22 @@ suite "neovim msgpack rpc":
     check notifParams[0] == 3
     check notifParams[1] == 4
 
+  test "rpc round trip":
+    var router = newRpcRouter()
+    proc add(a: int, b: int): int {.rpc.} =
+      a + b
+    proc add(session: var RpcSession, a: int, b: int): tuple[id: uint64, data: string] {.rpcClient.}
+
+    var session = initRpcSession()
+    let (id, reqData) = add(session, 2, 3)
+    var reqParser = initRpcParser()
+    let reqMsg = reqParser.feed(reqData)[0]
+    let respData = encodeMessage(router.callMethod(reqMsg))
+    var respParser = initRpcParser()
+    let respMsg = respParser.feed(respData)[0]
+    check rpcUnpack[int](respMsg.result) == 5
+    check completeRequest(session, id)
+
   test "invalid frame errors":
     var s = MsgStream.init(16)
     s.pack_array(2)
