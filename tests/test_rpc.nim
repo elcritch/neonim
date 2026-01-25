@@ -99,11 +99,9 @@ suite "neovim msgpack rpc":
 
     var session = initRpcSession()
     let (id, reqData) = add(session, 2, 3)
-    var reqParser = initRpcParser()
-    let reqMsg = reqParser.feed(reqData)[0]
+    let reqMsg = decodeSingle(reqData)
     let respData = encodeMessage(router.callMethod(reqMsg))
-    var respParser = initRpcParser()
-    let respMsg = respParser.feed(respData)[0]
+    let respMsg = decodeSingle(respData)
     check rpcUnpack[int](respMsg.result) == 5
     check completeRequest(session, id)
 

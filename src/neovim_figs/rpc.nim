@@ -242,6 +242,12 @@ proc decodeMessage*(s: MsgStream): RpcMessage =
   else:
     raise newException(ValueError, "msgpack rpc: unknown message type")
 
+proc decodeSingle*(data: string): RpcMessage =
+  var s = MsgStream.init(data)
+  result = decodeMessage(s)
+  if s.getPosition() != data.len:
+    raise newException(ValueError, "msgpack rpc: trailing bytes in message")
+
 proc makeProcName(s: string): string =
   result = ""
   for c in s:
