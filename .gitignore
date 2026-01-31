@@ -16,3 +16,4 @@ nimble.paths
 deps/
 .nimcache
 nimbledeps
+.nvimlog

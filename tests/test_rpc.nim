@@ -1,5 +1,5 @@
 import std/unittest
-import neovim_figs/rpc
+import neonim/rpc
 import msgpack4nim
 
 suite "neovim msgpack rpc":
