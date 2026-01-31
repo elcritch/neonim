@@ -12,6 +12,7 @@ requires "msgpack4nim"
 requires "https://github.com/elcritch/figdraw"
 
 feature "references":
+  requires "https://github.com/neovim/neovim"
   requires "https://github.com/equalsraf/neovim-qt.git"
   requires "https://github.com/elcritch/fastrpc.git"
 
