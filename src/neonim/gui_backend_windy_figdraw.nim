@@ -113,9 +113,9 @@ proc makeRenderTree(w, h: float32, monoFont: UiFont, state: LineGridState, cellW
   result = Renders(layers: initOrderedTable[ZLevel, RenderList]())
   result.layers[0.ZLevel] = list
 
-proc computeGridSize(win: WindowInfo, cellW, cellH: float32): tuple[rows, cols: int] =
-  let cols = max(1, int(win.box.w / cellW))
-  let rows = max(1, int(win.box.h / cellH))
+proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] =
+  let cols = max(1, int(size.x / cellW))
+  let rows = max(1, int(size.y / cellH))
   (rows, cols)
 
 proc rpcPackUiAttachParams(cols, rows: int, opts: openArray[(string, bool)]): RpcParamsBuffer =
@@ -134,34 +134,21 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
   when not defined(emscripten):
     setFigDataDir(getCurrentDir() / "deps" / "figdraw" / "data")
 
-  app.running = true
-  app.autoUiScale = false
-  app.uiScale = 1.0
-  app.pixelScale = 1.0
-
-  let typefaceId = getTypefaceImpl(config.fontTypeface)
+  var app_running = true
+  let size = ivec2(1000, 700)
+  let title = "Neonim"
+  let typefaceId = loadTypeface(config.fontTypeface)
   let monoFont = UiFont(
     typefaceId: typefaceId,
     size: config.fontSize,
-    lineHeightScale: config.lineHeightScale,
   )
   let (cellW, cellH) = monoMetrics(monoFont)
 
-  var frame = AppFrame(windowTitle: config.windowTitle)
-  frame.windowInfo = WindowInfo(
-    box: rect(0, 0, 1000, 700),
-    running: true,
-    focused: true,
-    minimized: false,
-    fullscreen: false,
-    pixelRatio: 1.0,
-  )
-
-  let window = newWindyWindow(frame)
+  let window = newWindyWindow(size = size, fullscreen = false, title = title)
   window.runeInputEnabled = true
 
   let renderer =
-    glrenderer.newFigRenderer(atlasSize = 2048, pixelScale = app.pixelScale)
+    glrenderer.newFigRenderer(atlasSize = 2048)
 
   var client = newNeovimClient()
   client.start(config.nvimCmd, config.nvimArgs)
@@ -169,8 +156,8 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
 
   var hl = HlState(attrs: initTable[int64, HlAttr]())
 
-  var winInfo = window.getWindowInfo()
-  var (rows, cols) = computeGridSize(winInfo, cellW, cellH)
+  var sz = window.logicalSize()
+  var (rows, cols) = computeGridSize(sz, cellW, cellH)
   var state = initLineGridState(rows, cols)
 
   client.onNotification = proc(methodName: string, params: RpcParamsBuffer) =
@@ -186,20 +173,20 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
     discard client.callAndWait("nvim_ui_attach", rpcPackUiAttachParams(cols, rows, opts), timeout = 3.0)
 
   proc redraw() =
-    winInfo = window.getWindowInfo()
-    var renders = makeRenderTree(float32(winInfo.box.w), float32(winInfo.box.h), monoFont, state, cellW, cellH)
-    renderer.renderFrame(renders, winInfo.box.wh.scaled())
+    let sz = window.logicalSize()
+    var renders = makeRenderTree(sz.x, sz.y, monoFont, state, cellW, cellH)
+    renderer.renderFrame(renders, sz)
     when not UseMetalBackend:
       window.swapBuffers()
 
   proc tryResizeUi() =
-    winInfo = window.getWindowInfo()
-    let newSz = computeGridSize(winInfo, cellW, cellH)
+    let sz = window.logicalSize()
+    let newSz = computeGridSize(sz, cellW, cellH)
     if newSz.rows != state.rows or newSz.cols != state.cols:
       discard client.request("nvim_ui_try_resize", rpcPackParams(newSz.cols, newSz.rows))
 
   window.onCloseRequest = proc() =
-    app.running = false
+    app_running = false
   window.onResize = proc() =
     tryResizeUi()
     state.needsRedraw = true
@@ -214,7 +201,7 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
       discard client.request("nvim_input", rpcPackParams(input))
 
   try:
-    while app.running:
+    while app_running:
       pollEvents()
       client.poll()
       if state.needsRedraw:
