@@ -1,5 +1,8 @@
---nimcache: ".nimcache/"
+--nimcache:".nimcache/"
+
+import std/[algorithm, sequtils, strutils]
 
 task test, "run unit test":
-  exec("nim r tests/test_rpc.nim")
-
+  for testFile in listFiles("tests/"):
+    if testFile.endsWith(".nim") and testFile.startsWith("t"):
+      exec("nim r " & testFile)
