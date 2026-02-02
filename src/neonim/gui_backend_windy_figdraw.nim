@@ -8,10 +8,10 @@ import chroma
 import msgpack4nim
 import pkg/pixie/fonts
 
-import windy
 import figdraw/commons
 import figdraw/fignodes
 import figdraw/figrender as glrenderer
+import figdraw/windyshim
 when not UseMetalBackend:
   import figdraw/utils/glutils
 
@@ -28,40 +28,6 @@ type
     fontTypeface*: string
     fontSize*: float32
     lineHeightScale*: float32
-
-proc setupWindow(frame: AppFrame, window: Window) =
-  when not defined(emscripten):
-    if frame.windowInfo.fullscreen:
-      window.fullscreen = frame.windowInfo.fullscreen
-    else:
-      window.size = ivec2(frame.windowInfo.box.wh.scaled())
-    window.visible = true
-  when not UseMetalBackend:
-    window.makeContextCurrent()
-
-proc newWindyWindow(frame: AppFrame): Window =
-  let window =
-    when defined(emscripten):
-      newWindow(frame.windowTitle, ivec2(0, 0), visible = false)
-    else:
-      newWindow(frame.windowTitle, ivec2(1280, 800), visible = false)
-  when defined(emscripten):
-    setupWindow(frame, window)
-    startOpenGL(openglVersion)
-  elif UseMetalBackend:
-    setupWindow(frame, window)
-  else:
-    setupWindow(frame, window)
-    startOpenGL(openglVersion)
-  result = window
-
-proc getWindowInfo(window: Window): WindowInfo =
-  app.requestedFrame.inc
-  result.minimized = window.minimized()
-  result.pixelRatio = window.contentScale()
-  let size = window.size()
-  result.box.w = size.x.float32.descaled()
-  result.box.h = size.y.float32.descaled()
 
 proc monoMetrics(font: UiFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
