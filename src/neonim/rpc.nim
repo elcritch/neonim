@@ -29,7 +29,9 @@ type
   RpcParamsBuffer* = object
     buf*: MsgStream
 
-  RpcProc* = proc(params: RpcParamsBuffer, context: RpcContext): RpcParamsBuffer {.gcsafe, nimcall.}
+  RpcProc* = proc(params: RpcParamsBuffer, context: RpcContext): RpcParamsBuffer {.
+    gcsafe, nimcall
+  .}
 
   RpcRouter* = ref object
     procs*: Table[string, RpcProc]
@@ -50,7 +52,9 @@ proc register*(router: RpcRouter, methodName: string, call: RpcProc) =
 proc hasMethod*(router: RpcRouter, methodName: string): bool =
   router.procs.hasKey(methodName)
 
-proc newRequest*(msgid: uint64, methodName: string, params: RpcParamsBuffer): RpcMessage =
+proc newRequest*(
+    msgid: uint64, methodName: string, params: RpcParamsBuffer
+): RpcMessage =
   RpcMessage(kind: rmRequest, msgid: msgid, methodName: methodName, params: params)
 
 proc newResponse*(msgid: uint64, error, res: RpcParamsBuffer): RpcMessage =
@@ -107,8 +111,10 @@ proc initRpcParamsBuffer*(data: string): RpcParamsBuffer =
 
 proc pack_type*[ByteStream](s: ByteStream, x: RpcParamsBuffer) =
   let size =
-    if x.buf.getPosition() > 0: x.buf.getPosition()
-    else: x.buf.data.len
+    if x.buf.getPosition() > 0:
+      x.buf.getPosition()
+    else:
+      x.buf.data.len
   if size > 0:
     s.write(x.buf.data[0 ..< size])
 
@@ -138,7 +144,9 @@ proc encodeMessage*(msg: RpcMessage): string =
     s.pack(msg.params)
   result = s.data
 
-proc startRequest*(session: var RpcSession, methodName: string, params: RpcParamsBuffer): tuple[id: uint64, data: string] =
+proc startRequest*(
+    session: var RpcSession, methodName: string, params: RpcParamsBuffer
+): tuple[id: uint64, data: string] =
   let id = session.nextId
   session.nextId.inc
   session.pending[id] = methodName
@@ -255,15 +263,14 @@ proc makeProcName(s: string): string =
       result.add c
 
 proc hasReturnType(params: NimNode): bool =
-  if params != nil and params.len > 0 and params[0] != nil and
-     params[0].kind != nnkEmpty:
+  if params != nil and params.len > 0 and params[0] != nil and params[0].kind != nnkEmpty:
     result = true
 
 iterator paramsIter(params: NimNode): tuple[name, ntype: NimNode] =
   for i in 1 ..< params.len:
     let arg = params[i]
     let argType = arg[^2]
-    for j in 0 ..< arg.len-2:
+    for j in 0 ..< arg.len - 2:
       yield (arg[j], argType)
 
 proc isRpcSessionType(paramType: NimNode): bool {.compileTime.} =
@@ -304,9 +311,8 @@ proc mkParamsType*(paramsIdent, paramsType, params: NimNode): NimNode =
   ## Create a type that represents the arguments for this rpc call.
   if params.isNil:
     return
-  var typObj = quote do:
-    type
-      `paramsType` = object
+  var typObj = quote:
+    type `paramsType` = object
   var recList = newNimNode(nnkRecList)
   for paramIdent, paramType in paramsIter(params):
     recList.add newIdentDefs(postfix(paramIdent, "*"), paramType)
@@ -337,7 +343,7 @@ proc mkParamUnpack(paramsType, params, paramTotal: NimNode): NimNode =
     let field = newDotExpr(valIdent, ident(paramid.strVal))
     body.add quote do:
       `sIdent`.unpack(`field`)
-  result = quote do:
+  result = quote:
     proc unpack_type(`sIdent`: Stream, `valIdent`: var `paramsType`) =
       `body`
 
@@ -377,24 +383,29 @@ macro rpcImpl*(p: untyped): untyped =
     `paramTypes`
     `paramUnpack`
 
-    proc `procName`(`paramsIdent`: `paramTypeName`,
-                    `ctxName`: RpcContext
-                    ): `ReturnType` =
+    proc `procName`(
+        `paramsIdent`: `paramTypeName`, `ctxName`: RpcContext
+    ): `ReturnType` =
       {.cast(gcsafe).}:
         `paramSetups`
         `procBody`
 
   if voidRet:
     result.add quote do:
-      proc `rpcMethod`(`paramsVar`: RpcParamsBuffer, context: RpcContext): RpcParamsBuffer {.gcsafe, nimcall.} =
+      proc `rpcMethod`(
+          `paramsVar`: RpcParamsBuffer, context: RpcContext
+      ): RpcParamsBuffer {.gcsafe, nimcall.} =
         var `paramsObj`: `paramTypeName`
         `paramsVar`.buf.setPosition(0)
         `paramsVar`.buf.unpack(`paramsObj`)
         discard `procName`(`paramsObj`, context)
         result = rpcPackNil()
+
   else:
     result.add quote do:
-      proc `rpcMethod`(`paramsVar`: RpcParamsBuffer, context: RpcContext): RpcParamsBuffer {.gcsafe, nimcall.} =
+      proc `rpcMethod`(
+          `paramsVar`: RpcParamsBuffer, context: RpcContext
+      ): RpcParamsBuffer {.gcsafe, nimcall.} =
         var `paramsObj`: `paramTypeName`
         `paramsVar`.buf.setPosition(0)
         `paramsVar`.buf.unpack(`paramsObj`)
@@ -426,7 +437,9 @@ macro rpcClientImpl*(p: untyped, notify: static[bool]): untyped =
     inc(idx)
 
   if not notify and sessionSym.isNil:
-    error("msgpack rpc: request procs must take `session: var RpcSession` as the first parameter")
+    error(
+      "msgpack rpc: request procs must take `session: var RpcSession` as the first parameter"
+    )
 
   let paramsCall = newCall(ident("rpcPackParams"), argSyms)
   var body = newStmtList()
@@ -441,14 +454,15 @@ macro rpcClientImpl*(p: untyped, notify: static[bool]): untyped =
       result = newRequest(id, `path`, `paramsCall`)
 
   let filteredPragmas = filterPragmas(pragmas, @["rpcRequest", "rpcNotify"])
-  result = newTree(nnkProcDef,
+  result = newTree(
+    nnkProcDef,
     p[0],
     newEmptyNode(),
     newEmptyNode(),
     params,
     filteredPragmas,
     newEmptyNode(),
-    body
+    body,
   )
 
 template rpcRequest*(p: untyped): untyped =
@@ -472,6 +486,67 @@ proc feed*(parser: var RpcParser, data: string): seq[RpcMessage] =
         break
       except ObjectConversionDefect as err:
         raise newException(ValueError, "msgpack rpc: invalid msgpack: " & err.msg)
+    let consumed = s.getPosition()
+    if consumed <= 0:
+      break
+    if consumed >= parser.buffer.len:
+      parser.buffer.setLen(0)
+    else:
+      parser.buffer = parser.buffer[consumed .. ^1]
+    result.add msg
+
+proc feedRecovering*(parser: var RpcParser, data: string): seq[RpcMessage] =
+  ## Like `feed`, but attempts to resynchronize if non-RPC bytes appear in the stream.
+  ## This is useful for embedded processes that may occasionally write to stdout.
+  if data.len > 0:
+    parser.buffer.add(data)
+
+  proc findNextRpcHeader(buf: string): int =
+    # Valid envelopes start with an array header of length 3 or 4.
+    for i in 0 ..< buf.len:
+      let c = buf[i]
+      if c == chr(0x93) or c == chr(0x94):
+        return i
+      if c == chr(0xdc) and i + 2 < buf.len:
+        if buf[i + 1] == chr(0x00) and
+            (buf[i + 2] == chr(0x03) or buf[i + 2] == chr(0x04)):
+          return i
+      if c == chr(0xdd) and i + 4 < buf.len:
+        if buf[i + 1] == chr(0x00) and buf[i + 2] == chr(0x00) and
+            buf[i + 3] == chr(0x00) and
+            (buf[i + 4] == chr(0x03) or buf[i + 4] == chr(0x04)):
+          return i
+    -1
+
+  while parser.buffer.len > 0:
+    var s = MsgStream.init(parser.buffer)
+    let msg =
+      try:
+        decodeMessage(s)
+      except IOError:
+        break
+      except ValueError:
+        let idx = findNextRpcHeader(parser.buffer)
+        if idx < 0:
+          if parser.buffer.len > 0:
+            parser.buffer = parser.buffer[1 .. ^1]
+          else:
+            parser.buffer.setLen(0)
+          continue
+        if idx > 0:
+          parser.buffer = parser.buffer[idx .. ^1]
+        else:
+          if parser.buffer.len > 0:
+            parser.buffer = parser.buffer[1 .. ^1]
+        continue
+      except ObjectConversionDefect:
+        let idx = findNextRpcHeader(parser.buffer)
+        if idx < 0:
+          parser.buffer.setLen(0)
+          break
+        parser.buffer = parser.buffer[idx .. ^1]
+        continue
+
     let consumed = s.getPosition()
     if consumed <= 0:
       break

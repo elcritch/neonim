@@ -22,6 +22,14 @@ type
     cursorCol*: int
     colors*: UiColors
     needsRedraw*: bool
+    cmdlineActive*: bool
+    cmdlineText*: string
+    cmdlinePos*: int
+    cmdlineOffset*: int
+    wildmenuActive*: bool
+    wildmenuText*: string
+    wildmenuSelected*: int
+    wildmenuItems*: seq[string]
 
   HlAttr* = object
     fg*: Option[Color]
@@ -45,9 +53,28 @@ proc initLineGridState*(rows, cols: int): LineGridState =
   for i in 0 ..< result.cells.len:
     result.cells[i] = Cell(text: " ", hlId: 0)
   result.needsRedraw = true
+  result.cmdlineActive = false
+  result.cmdlineText = ""
+  result.cmdlinePos = 0
+  result.cmdlineOffset = 0
+  result.wildmenuActive = false
+  result.wildmenuText = ""
+  result.wildmenuSelected = -1
+  result.wildmenuItems = @[]
 
 proc cellIndex*(s: LineGridState, row, col: int): int =
   row * s.cols + col
+
+proc renderedCell*(s: LineGridState, row, col: int): Cell =
+  if s.cmdlineActive and row == s.rows - 1:
+    if col >= 0 and col < s.cmdlineText.len:
+      return Cell(text: $s.cmdlineText[col], hlId: 0)
+    return Cell(text: " ", hlId: 0)
+  if s.wildmenuActive and row == s.rows - 2:
+    if col >= 0 and col < s.wildmenuText.len:
+      return Cell(text: $s.wildmenuText[col], hlId: 0)
+    return Cell(text: " ", hlId: 0)
+  s.cells[s.cellIndex(row, col)]
 
 proc clear*(s: var LineGridState) =
   for i in 0 ..< s.cells.len:
@@ -168,6 +195,48 @@ proc applyGridLine(state: var LineGridState, hl: HlState, s: MsgStream) =
     s.skip_msg()
   state.needsRedraw = true
 
+proc unpackCmdlineContentText(s: MsgStream): string =
+  # content is: [ [attr_id, text], ... ]
+  if not s.is_array():
+    s.skip_msg()
+    return
+  let chunkCount = s.unpack_array()
+  for _ in 0 ..< chunkCount:
+    if not s.is_array():
+      s.skip_msg()
+      continue
+    let chunkLen = s.unpack_array()
+    for cidx in 0 ..< chunkLen:
+      if cidx == 1:
+        if s.is_string() or s.is_bin():
+          result.add unpackStringOrBin(s)
+        else:
+          s.skip_msg()
+      else:
+        s.skip_msg()
+
+proc updateCmdlineRow(state: var LineGridState) =
+  if state.cmdlineActive:
+    state.cursorRow = max(0, state.rows - 1)
+    state.cursorCol =
+      min(state.cols - 1, max(0, state.cmdlineOffset + state.cmdlinePos))
+  state.needsRedraw = true
+
+proc rebuildWildmenuText(state: var LineGridState) =
+  # Render a simple wildmenu line with the selected item bracketed.
+  var outText = ""
+  for i, it in state.wildmenuItems:
+    if outText.len > 0:
+      outText.add " "
+    if i == state.wildmenuSelected:
+      outText.add "["
+      outText.add it
+      outText.add "]"
+    else:
+      outText.add it
+  state.wildmenuText = outText
+  state.needsRedraw = true
+
 proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsBuffer) =
   var s = MsgStream.init(params.buf.data)
   s.setPosition(0)
@@ -263,6 +332,119 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
     of "grid_line":
       for _ in 1 ..< evLen:
         applyGridLine(state, hl, s)
+    of "cmdline_show":
+      for _ in 1 ..< evLen:
+        let itemLen = s.unpack_array()
+        if itemLen <= 0:
+          continue
+
+        let contentText = unpackCmdlineContentText(s)
+        var pos = 0
+        var firstcText = ""
+        var promptText = ""
+
+        for idx in 1 ..< itemLen:
+          case idx
+          of 1:
+            if s.is_uint() or s.is_int():
+              pos = int(unpackInt64(s))
+            else:
+              s.skip_msg()
+          of 2:
+            if s.is_uint() or s.is_int():
+              let firstc = unpackInt64(s)
+              if firstc > 0 and firstc <= 255:
+                firstcText = $char(firstc)
+            elif s.is_string() or s.is_bin():
+              let fc = unpackStringOrBin(s)
+              if fc.len > 0:
+                firstcText = $fc[0]
+            else:
+              s.skip_msg()
+          of 3:
+            if s.is_string() or s.is_bin():
+              promptText = unpackStringOrBin(s)
+            else:
+              s.skip_msg()
+          else:
+            s.skip_msg()
+
+        let prefix = firstcText & promptText
+        state.cmdlinePos = pos
+        state.cmdlineActive = true
+        state.cmdlineText =
+          if (prefix.len + contentText.len) > state.cols:
+            (prefix & contentText)[0 ..< state.cols]
+          else:
+            prefix & contentText
+        state.cmdlineOffset = prefix.len
+        state.updateCmdlineRow()
+    of "cmdline_pos":
+      for _ in 1 ..< evLen:
+        let itemLen = s.unpack_array()
+        if itemLen >= 1:
+          if s.is_uint() or s.is_int():
+            state.cmdlinePos = int(unpackInt64(s))
+          else:
+            s.skip_msg()
+          for _ in 1 ..< itemLen:
+            s.skip_msg()
+          state.updateCmdlineRow()
+        else:
+          for _ in 0 ..< itemLen:
+            s.skip_msg()
+    of "cmdline_hide":
+      for _ in 1 ..< evLen:
+        s.skip_msg()
+      state.cmdlineActive = false
+      state.cmdlineText = ""
+      state.cmdlinePos = 0
+      state.cmdlineOffset = 0
+      state.needsRedraw = true
+    of "wildmenu_show":
+      for _ in 1 ..< evLen:
+        let itemLen = s.unpack_array()
+        if itemLen >= 1 and s.is_array():
+          let n = s.unpack_array()
+          var items: seq[string]
+          items.setLen(n)
+          for i in 0 ..< n:
+            if s.is_string() or s.is_bin():
+              items[i] = unpackStringOrBin(s)
+            else:
+              s.skip_msg()
+              items[i] = ""
+          # optional selected index
+          if itemLen >= 2 and (s.is_uint() or s.is_int()):
+            state.wildmenuSelected = int(unpackInt64(s))
+          else:
+            for _ in 1 ..< itemLen:
+              s.skip_msg()
+          state.wildmenuActive = true
+          state.wildmenuItems = items
+          state.rebuildWildmenuText()
+        else:
+          for _ in 0 ..< itemLen:
+            s.skip_msg()
+    of "wildmenu_select":
+      for _ in 1 ..< evLen:
+        let itemLen = s.unpack_array()
+        if itemLen >= 1 and (s.is_uint() or s.is_int()):
+          state.wildmenuSelected = int(unpackInt64(s))
+          for _ in 1 ..< itemLen:
+            s.skip_msg()
+          state.rebuildWildmenuText()
+        else:
+          for _ in 0 ..< itemLen:
+            s.skip_msg()
+    of "wildmenu_hide":
+      for _ in 1 ..< evLen:
+        s.skip_msg()
+      state.wildmenuActive = false
+      state.wildmenuText = ""
+      state.wildmenuSelected = -1
+      state.wildmenuItems = @[]
+      state.needsRedraw = true
     of "flush":
       for _ in 1 ..< evLen:
         s.skip_msg()

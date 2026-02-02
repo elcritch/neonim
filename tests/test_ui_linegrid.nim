@@ -284,3 +284,47 @@ suite "ui linegrid":
     )
     handleRedraw(state, hl, params)
     check state.needsRedraw
+
+  test "cmdline_show overlays rendered bottom row":
+    var state = initLineGridState(3, 10)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+    state.cells[state.cellIndex(2, 0)].text = "X"
+
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "cmdline_show",
+          proc(s: var MsgStream) =
+            s.pack_array(6)
+            # content: [[attr, text]]
+            s.pack_array(1)
+            s.pack_array(2)
+            s.pack(0)
+            s.pack("e ")
+            s.pack(2) # pos
+            s.pack(":") # firstc
+            s.pack("") # prompt
+            s.pack(0) # indent
+            s.pack(0) # level
+          ,
+        )
+    )
+    handleRedraw(state, hl, params)
+    check state.cmdlineActive
+    check state.renderedCell(2, 0).text == ":"
+    check state.renderedCell(2, 1).text == "e"
+    check state.renderedCell(2, 2).text == " "
+
+  test "cmdline_hide clears cmdline overlay":
+    var state = initLineGridState(3, 10)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+    state.cmdlineActive = true
+    state.cmdlineText = ":q"
+
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(s, "cmdline_hide")
+    )
+    handleRedraw(state, hl, params)
+    check not state.cmdlineActive

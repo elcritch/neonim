@@ -200,7 +200,7 @@ proc poll*(client: NeovimClient) =
   else:
     let data = readAvailable(client.outFd)
     if data.len > 0:
-      for msg in client.parser.feed(data):
+      for msg in client.parser.feedRecovering(data):
         case msg.kind
         of rmResponse:
           client.responses[msg.msgid] = msg

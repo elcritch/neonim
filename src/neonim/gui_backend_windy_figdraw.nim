@@ -19,18 +19,21 @@ import ./rpc
 import ./nvim_client
 import ./ui_linegrid
 
-type
-  GuiConfig* = object
-    nvimCmd*: string
-    nvimArgs*: seq[string]
-    windowTitle*: string
+type GuiConfig* = object
+  nvimCmd*: string
+  nvimArgs*: seq[string]
+  windowTitle*: string
 
-    fontTypeface*: string
-    fontSize*: float32
+  fontTypeface*: string
+  fontSize*: float32
 
 proc monoMetrics(font: UiFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
-  let lineH = if px.lineHeight >= 0: px.lineHeight else: px.defaultLineHeight()
+  let lineH =
+    if px.lineHeight >= 0:
+      px.lineHeight
+    else:
+      px.defaultLineHeight()
   let adv = (px.typeface.getAdvance(Rune('M')) * px.scale)
   (adv, lineH.descaled())
 
@@ -51,12 +54,14 @@ proc keyToNvimInput(button: Button): string =
   of KeyPageDown: "<PageDown>"
   else: ""
 
-proc buildRowLayout(monoFont: UiFont, state: LineGridState, row: int, x0, y0, cellW: float32): GlyphArrangement =
+proc buildRowLayout(
+    monoFont: UiFont, state: LineGridState, row: int, x0, y0, cellW: float32
+): GlyphArrangement =
   var glyphs: seq[(Rune, Vec2)]
   glyphs.setLen(state.cols)
   var x = x0
   for col in 0 ..< state.cols:
-    let cell = state.cells[state.cellIndex(row, col)]
+    let cell = state.renderedCell(row, col)
     var r: Rune = Rune(' ')
     for rr in cell.text.runes:
       r = rr
@@ -65,7 +70,9 @@ proc buildRowLayout(monoFont: UiFont, state: LineGridState, row: int, x0, y0, ce
     x += cellW
   placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
 
-proc makeRenderTree(w, h: float32, monoFont: UiFont, state: LineGridState, cellW, cellH: float32): Renders =
+proc makeRenderTree(
+    w, h: float32, monoFont: UiFont, state: LineGridState, cellW, cellH: float32
+): Renders =
   var list = RenderList()
 
   let rootIdx = list.addRoot(
@@ -93,17 +100,17 @@ proc makeRenderTree(w, h: float32, monoFont: UiFont, state: LineGridState, cellW
       ),
     )
 
-  if state.cursorRow >= 0 and state.cursorRow < state.rows and
-     state.cursorCol >= 0 and state.cursorCol < state.cols:
+  if state.cursorRow >= 0 and state.cursorRow < state.rows and state.cursorCol >= 0 and
+      state.cursorCol < state.cols:
     let cx = state.cursorCol.float32 * cellW
-    let cy = state.cursorRow.float32 * 2*cellH
+    let cy = state.cursorRow.float32 * 2 * cellH
     discard list.addChild(
       rootIdx,
       Fig(
         kind: nkRectangle,
         childCount: 0,
         zlevel: 1.ZLevel,
-        screenBox: rect(cx, cy, cellW, 2*cellH),
+        screenBox: rect(cx, cy, cellW, 2 * cellH),
         fill: rgba(220, 220, 220, 80).color,
       ),
     )
@@ -116,7 +123,9 @@ proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] 
   let rows = max(1, int(size.y / cellH))
   (rows, cols)
 
-proc rpcPackUiAttachParams(cols, rows: int, opts: openArray[(string, bool)]): RpcParamsBuffer =
+proc rpcPackUiAttachParams(
+    cols, rows: int, opts: openArray[(string, bool)]
+): RpcParamsBuffer =
   var s = MsgStream.init()
   s.pack_array(3)
   s.pack(cols)
@@ -136,10 +145,7 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
   let size = ivec2(1000, 700)
   let title = "Neonim"
   let typefaceId = loadTypeface(config.fontTypeface)
-  let monoFont = UiFont(
-    typefaceId: typefaceId,
-    size: config.fontSize,
-  )
+  let monoFont = UiFont(typefaceId: typefaceId, size: config.fontSize)
   let window = newWindyWindow(size = size, fullscreen = false, title = title)
   window.runeInputEnabled = true
 
@@ -172,8 +178,12 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
       ("rgb", true),
       ("ext_linegrid", true),
       ("ext_hlstate", true),
+      ("ext_cmdline", true),
+      ("ext_wildmenu", true),
     ]
-    discard client.callAndWait("nvim_ui_attach", rpcPackUiAttachParams(cols, rows, opts), timeout = 3.0)
+    discard client.callAndWait(
+      "nvim_ui_attach", rpcPackUiAttachParams(cols, rows, opts), timeout = 3.0
+    )
 
   proc redraw() =
     let sz = window.logicalSize()
@@ -186,7 +196,8 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
     let sz = window.logicalSize()
     let newSz = computeGridSize(sz, cellW, cellH)
     if newSz.rows != state.rows or newSz.cols != state.cols:
-      discard client.request("nvim_ui_try_resize", rpcPackParams(newSz.cols, newSz.rows))
+      discard
+        client.request("nvim_ui_try_resize", rpcPackParams(newSz.cols, newSz.rows))
 
   window.onCloseRequest = proc() =
     app_running = false

@@ -54,6 +54,15 @@ proc cellChar(state: LineGridState, row, col: int): char =
     return '\0'
   cellText[0]
 
+proc renderedRowStartsWith(state: LineGridState, row: int, prefix: string): bool =
+  for i in 0 ..< prefix.len:
+    if row < 0 or row >= state.rows or i < 0 or i >= state.cols:
+      return false
+    let cellText = state.renderedCell(row, i).text
+    if cellText.len == 0 or cellText[0] != prefix[i]:
+      return false
+  true
+
 suite "ui linegrid redraw":
   test "multiline insert updates grid rendering":
     when defined(windows):
@@ -235,5 +244,87 @@ suite "ui linegrid redraw":
               return false
             state.rowContains(oneRow + 1, "three") and
               state.findRowContaining("two") == -1,
+          timeout = 5.0,
+        )
+
+  test "cmdline renders : commands at bottom":
+    when defined(windows):
+      check true
+    else:
+      if findExe("nvim").len == 0:
+        echo "SKIP: `nvim` not found in PATH"
+        check true
+      else:
+        let client = newNeovimClient()
+        defer:
+          client.stop()
+
+        client.start(
+          nvimCmd = "nvim",
+          args = @["--headless", "-u", "NONE", "-i", "NONE", "--noplugin", "-n"],
+        )
+        let apiInfo =
+          client.callAndWait("vim_get_api_info", rpcPackParams(), timeout = 10.0)
+        check apiInfo.error.isNilValue
+
+        var hl = HlState(attrs: initTable[int64, HlAttr]())
+        var state = initLineGridState(24, 80)
+
+        proc pumpAndHandleRedraw() =
+          client.poll()
+          for notif in client.takeNotifications():
+            if notif.kind == rmNotification and notif.methodName == "redraw":
+              handleRedraw(state, hl, notif.params)
+
+        proc waitUntil(predicate: proc(): bool {.closure.}, timeout = 2.0) =
+          let startTime = epochTime()
+          while true:
+            pumpAndHandleRedraw()
+            if predicate():
+              return
+            if epochTime() - startTime > timeout:
+              break
+            sleep(1)
+          check predicate()
+
+        let attachResp = client.callAndWait(
+          "nvim_ui_attach",
+          rpcPackUiAttachParams(
+            80,
+            24,
+            [
+              ("rgb", true),
+              ("ext_linegrid", true),
+              ("ext_hlstate", true),
+              ("ext_cmdline", true),
+              ("ext_wildmenu", true),
+            ],
+          ),
+          timeout = 10.0,
+        )
+        check attachResp.error.isNilValue
+
+        for _ in 0 ..< 50:
+          pumpAndHandleRedraw()
+
+        proc sendInput(s: string) =
+          let resp = client.callAndWait("nvim_input", rpcPackParams(s), timeout = 10.0)
+          check resp.error.isNilValue
+          check rpcUnpack[int](resp.result) > 0
+
+        let typed = ":e "
+        for i, ch in typed:
+          sendInput($ch)
+          waitUntil(
+            proc(): bool =
+              state.cmdlineActive and
+                state.renderedRowStartsWith(state.rows - 1, typed[0 .. i]),
+            timeout = 5.0,
+          )
+
+        sendInput("\x1b")
+        waitUntil(
+          proc(): bool =
+            not state.cmdlineActive,
           timeout = 5.0,
         )
