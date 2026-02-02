@@ -57,7 +57,8 @@ proc parseMetadata*(buf: RpcParamsBuffer): NeovimMetadata =
   s.setPosition(0)
   let outerLen = s.unpack_array()
   if outerLen != 2:
-    raise newException(NeovimError, "vim_get_api_info result must be [channel, metadata]")
+    raise
+      newException(NeovimError, "vim_get_api_info result must be [channel, metadata]")
 
   result.channelId = unpackInt64(s)
   if not s.is_map():
@@ -115,6 +116,8 @@ proc start*(client: NeovimClient, nvimCmd = "nvim", args: seq[string] = @[]) =
   client.session = initRpcSession()
   client.responses = initTable[uint64, RpcMessage]()
 
+proc poll*(client: NeovimClient)
+
 proc stop*(client: NeovimClient) =
   if client.isNil or client.process.isNil:
     return
@@ -132,6 +135,24 @@ proc stop*(client: NeovimClient) =
     discard
   client.process = nil
 
+proc isRunning*(client: NeovimClient): bool =
+  if client.isNil or client.process.isNil:
+    return false
+  try:
+    return client.process.running()
+  except CatchableError:
+    return false
+
+proc waitForExit*(client: NeovimClient, timeout = 2.0): bool =
+  let startTime = epochTime()
+  while true:
+    if not client.isRunning():
+      return true
+    if epochTime() - startTime > timeout:
+      return false
+    client.poll()
+    sleep(1)
+
 proc newNeovimClient*(): NeovimClient =
   new(result)
 
@@ -139,7 +160,9 @@ proc sendRaw(client: NeovimClient, data: string) =
   client.inStream.write(data)
   client.inStream.flush()
 
-proc request*(client: NeovimClient, methodName: string, params: RpcParamsBuffer): uint64 =
+proc request*(
+    client: NeovimClient, methodName: string, params: RpcParamsBuffer
+): uint64 =
   var session = client.session
   let (id, data) = startRequest(session, methodName, params)
   client.session = session
@@ -191,7 +214,9 @@ proc waitResponse*(client: NeovimClient, msgid: uint64, timeout = 2.0): RpcMessa
     if client.process != nil:
       try:
         if not client.process.running():
-          raise newException(NeovimError, "nvim exited while waiting for response: " & $msgid)
+          raise newException(
+            NeovimError, "nvim exited while waiting for response: " & $msgid
+          )
       except CatchableError:
         discard
     client.poll()
@@ -203,12 +228,16 @@ proc waitResponse*(client: NeovimClient, msgid: uint64, timeout = 2.0): RpcMessa
       raise newException(NeovimError, "timeout waiting for response: " & $msgid)
     sleep(1)
 
-proc callAndWait*(client: NeovimClient, methodName: string, params: RpcParamsBuffer, timeout = 2.0): RpcMessage =
+proc callAndWait*(
+    client: NeovimClient, methodName: string, params: RpcParamsBuffer, timeout = 2.0
+): RpcMessage =
   let id = client.request(methodName, params)
   result = client.waitResponse(id, timeout)
 
 proc discoverMetadata*(client: NeovimClient): NeovimMetadata =
   let resp = client.callAndWait("vim_get_api_info", rpcPackParams(), timeout = 10.0)
   if not resp.error.isNilValue:
-    raise newException(NeovimError, "vim_get_api_info failed: " & rpcUnpack[string](resp.error))
+    raise newException(
+      NeovimError, "vim_get_api_info failed: " & rpcUnpack[string](resp.error)
+    )
   result = parseMetadata(resp.result)
