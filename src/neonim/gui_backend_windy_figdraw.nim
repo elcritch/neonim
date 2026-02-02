@@ -154,8 +154,7 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
   if size != size.scaled():
     window.size = size.scaled()
 
-  let renderer =
-    glrenderer.newFigRenderer(atlasSize = 2048)
+  let renderer = newFigRenderer(atlasSize = 2048)
 
   var client = newNeovimClient()
   client.start(config.nvimCmd, config.nvimArgs)
