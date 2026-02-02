@@ -132,7 +132,7 @@ proc rpcPackUiAttachParams(cols, rows: int, opts: openArray[(string, bool)]): Rp
 
 proc runWindyFigdrawGui*(config: GuiConfig) =
   when not defined(emscripten):
-    setFigDataDir(getCurrentDir())
+    setFigDataDir(getCurrentDir() / "data")
 
   var app_running = true
   let size = ivec2(1000, 700)
