@@ -27,6 +27,7 @@ type
     parser: RpcParser
     session: RpcSession
     responses: Table[uint64, RpcMessage]
+    notifications: seq[RpcMessage]
 
     onNotification*: NeovimNotificationHandler
 
@@ -115,6 +116,7 @@ proc start*(client: NeovimClient, nvimCmd = "nvim", args: seq[string] = @[]) =
   client.parser = initRpcParser()
   client.session = initRpcSession()
   client.responses = initTable[uint64, RpcMessage]()
+  client.notifications = @[]
 
 proc poll*(client: NeovimClient)
 
@@ -155,6 +157,10 @@ proc waitForExit*(client: NeovimClient, timeout = 2.0): bool =
 
 proc newNeovimClient*(): NeovimClient =
   new(result)
+
+proc takeNotifications*(client: NeovimClient): seq[RpcMessage] =
+  result = client.notifications
+  client.notifications.setLen(0)
 
 proc sendRaw(client: NeovimClient, data: string) =
   client.inStream.write(data)
@@ -202,6 +208,7 @@ proc poll*(client: NeovimClient) =
           discard session.completeRequest(msg.msgid)
           client.session = session
         of rmNotification:
+          client.notifications.add msg
           if client.onNotification != nil:
             client.onNotification(msg.methodName, msg.params)
         of rmRequest:
