@@ -27,14 +27,12 @@ type
 
     fontTypeface*: string
     fontSize*: float32
-    lineHeightScale*: float32
 
 proc monoMetrics(font: UiFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
-  let lineH =
-    (if px.lineHeight >= 0: px.lineHeight else: px.defaultLineHeight()).descaled()
-  let adv = (px.typeface.getAdvance(Rune('M')) * px.scale).descaled()
-  (adv, lineH)
+  let lineH = if px.lineHeight >= 0: px.lineHeight else: px.defaultLineHeight()
+  let adv = (px.typeface.getAdvance(Rune('M')) * px.scale)
+  (adv, lineH.descaled())
 
 proc keyToNvimInput(button: Button): string =
   case button
@@ -98,14 +96,14 @@ proc makeRenderTree(w, h: float32, monoFont: UiFont, state: LineGridState, cellW
   if state.cursorRow >= 0 and state.cursorRow < state.rows and
      state.cursorCol >= 0 and state.cursorCol < state.cols:
     let cx = state.cursorCol.float32 * cellW
-    let cy = state.cursorRow.float32 * cellH
+    let cy = state.cursorRow.float32 * 2*cellH
     discard list.addChild(
       rootIdx,
       Fig(
         kind: nkRectangle,
         childCount: 0,
         zlevel: 1.ZLevel,
-        screenBox: rect(cx, cy, cellW, cellH),
+        screenBox: rect(cx, cy, cellW, 2*cellH),
         fill: rgba(220, 220, 220, 80).color,
       ),
     )
@@ -142,8 +140,6 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
     typefaceId: typefaceId,
     size: config.fontSize,
   )
-  let (cellW, cellH) = monoMetrics(monoFont)
-
   let window = newWindyWindow(size = size, fullscreen = false, title = title)
   window.runeInputEnabled = true
 
@@ -161,8 +157,9 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
   discard client.discoverMetadata()
 
   var hl = HlState(attrs: initTable[int64, HlAttr]())
+  let sz = window.logicalSize()
+  let (cellW, cellH) = monoMetrics(monoFont)
 
-  var sz = window.logicalSize()
   var (rows, cols) = computeGridSize(sz, cellW, cellH)
   var state = initLineGridState(rows, cols)
 
@@ -228,6 +225,5 @@ when isMainModule:
       windowTitle: "neonim (windy + figdraw)",
       fontTypeface: "HackNerdFont-Regular.ttf",
       fontSize: 16.0'f32,
-      lineHeightScale: 1.0,
     )
   )
