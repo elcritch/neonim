@@ -74,8 +74,8 @@ proc scroll*(s: var LineGridState, top, bot, left, right, rows, cols: int) =
   var newCells = s.cells
   for r in top ..< bot:
     for c in left ..< right:
-      let srcR = r - rows
-      let srcC = c - cols
+      let srcR = r + rows
+      let srcC = c + cols
       let dstI = s.cellIndex(r, c)
       if srcR >= top and srcR < bot and srcC >= left and srcC < right:
         let srcI = s.cellIndex(srcR, srcC)

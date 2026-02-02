@@ -197,7 +197,7 @@ suite "ui linegrid":
     state.cells[state.cellIndex(1, 0)].text = "B"
     state.cells[state.cellIndex(2, 0)].text = "C"
 
-    # rows=1 shifts content down by one row (per current implementation)
+    # rows=1 shifts content up by one row
     let params = packRedraw(
       proc(s: var MsgStream) =
         packEvent(
@@ -217,9 +217,9 @@ suite "ui linegrid":
     )
     handleRedraw(state, hl, params)
 
-    check state.cells[state.cellIndex(0, 0)].text == " "
-    check state.cells[state.cellIndex(1, 0)].text == "A"
-    check state.cells[state.cellIndex(2, 0)].text == "B"
+    check state.cells[state.cellIndex(0, 0)].text == "B"
+    check state.cells[state.cellIndex(1, 0)].text == "C"
+    check state.cells[state.cellIndex(2, 0)].text == " "
 
   test "default_colors_set updates state colors":
     var state = initLineGridState(1, 1)
