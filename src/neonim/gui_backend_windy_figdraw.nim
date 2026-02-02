@@ -1,7 +1,7 @@
 when defined(emscripten):
-  import std/[unicode]
+  import std/[unicode, strutils]
 else:
-  import std/[os, unicode]
+  import std/[os, unicode, strutils]
 import std/[streams]
 
 import chroma
@@ -146,6 +146,13 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
 
   let window = newWindyWindow(size = size, fullscreen = false, title = title)
   window.runeInputEnabled = true
+
+  if getEnv("HDI") != "":
+    setFigUiScale getEnv("HDI").parseFloat()
+  else:
+    setFigUiScale window.contentScale()
+  if size != size.scaled():
+    window.size = size.scaled()
 
   let renderer =
     glrenderer.newFigRenderer(atlasSize = 2048)
