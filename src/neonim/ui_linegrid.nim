@@ -40,7 +40,8 @@ proc initLineGridState*(rows, cols: int): LineGridState =
   result.rows = rows
   result.cols = cols
   result.cells = newSeq[Cell](rows * cols)
-  result.colors = UiColors(fg: rgba(235, 235, 235, 255).color, bg: rgba(10, 10, 10, 255).color)
+  result.colors =
+    UiColors(fg: rgba(235, 235, 235, 255).color, bg: rgba(10, 10, 10, 255).color)
   for i in 0 ..< result.cells.len:
     result.cells[i] = Cell(text: " ", hlId: 0)
   result.needsRedraw = true
@@ -135,7 +136,7 @@ proc handleHlAttrDefine(hl: var HlState, s: MsgStream) =
 
 proc applyGridLine(state: var LineGridState, hl: HlState, s: MsgStream) =
   let itemLen = s.unpack_array()
-  if itemLen != 4:
+  if itemLen < 4:
     for _ in 0 ..< itemLen:
       s.skip_msg()
     return
@@ -163,6 +164,8 @@ proc applyGridLine(state: var LineGridState, hl: HlState, s: MsgStream) =
         state.cells[i].text = if text.len == 0: " " else: text
         state.cells[i].hlId = hlId
       col.inc
+  for _ in 4 ..< itemLen:
+    s.skip_msg()
   state.needsRedraw = true
 
 proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsBuffer) =
@@ -184,8 +187,16 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
         if itemLen >= 2:
           let fg = unpackInt64(s)
           let bg = unpackInt64(s)
-          state.colors.fg = if fg >= 0: rgb24ToColor(fg) else: state.colors.fg
-          state.colors.bg = if bg >= 0: rgb24ToColor(bg) else: state.colors.bg
+          state.colors.fg =
+            if fg >= 0:
+              rgb24ToColor(fg)
+            else:
+              state.colors.fg
+          state.colors.bg =
+            if bg >= 0:
+              rgb24ToColor(bg)
+            else:
+              state.colors.bg
           for _ in 2 ..< itemLen:
             s.skip_msg()
         else:

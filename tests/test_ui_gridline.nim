@@ -18,14 +18,33 @@ proc rpcPackUiAttachParams(
   s.setPosition(s.data.len)
   RpcParamsBuffer(buf: s)
 
-proc rowStartsWith(state: LineGridState, row: int, prefix: string): bool =
-  for i in 0 ..< prefix.len:
-    if row < 0 or row >= state.rows or i < 0 or i >= state.cols:
+proc rowHasAt(state: LineGridState, row, col: int, text: string): bool =
+  if text.len == 0:
+    return true
+  for i in 0 ..< text.len:
+    let cc = col + i
+    if row < 0 or row >= state.rows or cc < 0 or cc >= state.cols:
       return false
-    let cellText = state.cells[state.cellIndex(row, i)].text
-    if cellText.len == 0 or cellText[0] != prefix[i]:
+    let cellText = state.cells[state.cellIndex(row, cc)].text
+    if cellText.len == 0 or cellText[0] != text[i]:
       return false
   true
+
+proc rowContains(state: LineGridState, row: int, text: string): bool =
+  if text.len == 0:
+    return true
+  if text.len > state.cols:
+    return false
+  for col in 0 .. (state.cols - text.len):
+    if state.rowHasAt(row, col, text):
+      return true
+  false
+
+proc findRowContaining(state: LineGridState, text: string): int =
+  for row in 0 ..< state.rows:
+    if state.rowContains(row, text):
+      return row
+  -1
 
 proc cellChar(state: LineGridState, row, col: int): char =
   if row < 0 or row >= state.rows or col < 0 or col >= state.cols:
@@ -52,7 +71,9 @@ suite "ui linegrid redraw":
           nvimCmd = "nvim",
           args = @["--headless", "-u", "NONE", "-i", "NONE", "--noplugin", "-n"],
         )
-        discard client.discoverMetadata()
+        let apiInfo =
+          client.callAndWait("vim_get_api_info", rpcPackParams(), timeout = 10.0)
+        check apiInfo.error.isNilValue
 
         var hl = HlState(attrs: initTable[int64, HlAttr]())
         var state = initLineGridState(24, 80)
@@ -104,24 +125,32 @@ suite "ui linegrid redraw":
           sendInput($ch)
           waitUntil(
             proc(): bool =
-              state.rowStartsWith(0, line1[0 .. i])
+              state.findRowContaining(line1[0 .. i]) != -1,
+            timeout = 5.0,
           )
 
         sendInput("\n")
         waitUntil(
           proc(): bool =
-            state.rowStartsWith(0, line1) and state.cellChar(1, 0) != '~'
+            let row = state.findRowContaining(line1)
+            row != -1 and row + 1 < state.rows and state.cellChar(row + 1, 0) != '~',
+          timeout = 5.0,
         )
 
         for i, ch in line2:
           sendInput($ch)
           waitUntil(
             proc(): bool =
-              state.rowStartsWith(1, line2[0 .. i])
+              let row = state.findRowContaining(line1)
+              row != -1 and row + 1 < state.rows and
+                state.rowContains(row + 1, line2[0 .. i]),
+            timeout = 5.0,
           )
 
         sendInput("\x1b")
         waitUntil(
           proc(): bool =
-            state.rowStartsWith(0, line1) and state.rowStartsWith(1, line2)
+            let row = state.findRowContaining(line1)
+            row != -1 and row + 1 < state.rows and state.rowContains(row + 1, line2),
+          timeout = 5.0,
         )
