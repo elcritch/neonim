@@ -61,11 +61,25 @@ proc buildRowLayout(
   glyphs.setLen(state.cols)
   var x = x0
   for col in 0 ..< state.cols:
-    let cell = state.renderedCell(row, col)
+    let cell = state.cells[state.cellIndex(row, col)]
     var r: Rune = Rune(' ')
     for rr in cell.text.runes:
       r = rr
       break
+    glyphs[col] = (r, vec2(x, y0))
+    x += cellW
+  placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
+
+proc buildOverlayLayout(
+    monoFont: UiFont, state: LineGridState, text: string, x0, y0, cellW: float32
+): GlyphArrangement =
+  var glyphs: seq[(Rune, Vec2)]
+  glyphs.setLen(state.cols)
+  var x = x0
+  for col in 0 ..< state.cols:
+    var r: Rune = Rune(' ')
+    if col < text.len:
+      r = Rune(text[col])
     glyphs[col] = (r, vec2(x, y0))
     x += cellW
   placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
@@ -94,6 +108,39 @@ proc makeRenderTree(
         kind: nkText,
         childCount: 0,
         zlevel: 0.ZLevel,
+        screenBox: rect(0, y, w, cellH),
+        fill: state.colors.fg,
+        textLayout: layout,
+      ),
+    )
+
+  if state.wildmenuActive and state.rows >= 2:
+    let row = state.rows - 2
+    let y = row.float32 * cellH
+    let layout =
+      buildOverlayLayout(monoFont, state, state.wildmenuText, 0'f32, y, cellW)
+    discard list.addChild(
+      rootIdx,
+      Fig(
+        kind: nkText,
+        childCount: 0,
+        zlevel: 1.ZLevel,
+        screenBox: rect(0, y, w, cellH),
+        fill: state.colors.fg,
+        textLayout: layout,
+      ),
+    )
+
+  if state.cmdlineActive:
+    let row = state.rows - 1
+    let y = row.float32 * cellH
+    let layout = buildOverlayLayout(monoFont, state, state.cmdlineText, 0'f32, y, cellW)
+    discard list.addChild(
+      rootIdx,
+      Fig(
+        kind: nkText,
+        childCount: 0,
+        zlevel: 1.ZLevel,
         screenBox: rect(0, y, w, cellH),
         fill: state.colors.fg,
         textLayout: layout,
