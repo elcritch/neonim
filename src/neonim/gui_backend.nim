@@ -140,9 +140,10 @@ proc addRowRun(
 
   var glyphs: seq[(Rune, Vec2)]
   glyphs.setLen(endCol - startCol)
-  var gx = x
+  var gx = 0'f32
   for col in startCol ..< endCol:
     let cell = state.cells[state.cellIndex(row, col)]
+    # Positions are relative to the node origin; screenBox provides the run offset.
     glyphs[col - startCol] = (runeForCell(cell), vec2(gx, y))
     gx += cellW
   let layout = placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
