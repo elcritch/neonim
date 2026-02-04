@@ -27,6 +27,8 @@ type
     cmdlineText*: string
     cmdlinePos*: int
     cmdlineOffset*: int
+    cmdlineCommitPending*: bool
+    cmdlineCommittedText*: string
     wildmenuActive*: bool
     wildmenuText*: string
     wildmenuSelected*: int
@@ -58,6 +60,8 @@ proc initLineGridState*(rows, cols: int): LineGridState =
   result.cmdlineText = ""
   result.cmdlinePos = 0
   result.cmdlineOffset = 0
+  result.cmdlineCommitPending = false
+  result.cmdlineCommittedText = ""
   result.wildmenuActive = false
   result.wildmenuText = ""
   result.wildmenuSelected = -1
@@ -70,6 +74,11 @@ proc renderedCell*(s: LineGridState, row, col: int): Cell =
   if s.cmdlineActive and row == s.rows - 1:
     if col >= 0 and col < s.cmdlineText.len:
       return Cell(text: $s.cmdlineText[col], hlId: 0)
+    return Cell(text: " ", hlId: 0)
+  if (not s.cmdlineActive) and s.cmdlineCommittedText.len > 0 and
+      row == s.rows - 1:
+    if col >= 0 and col < s.cmdlineCommittedText.len:
+      return Cell(text: $s.cmdlineCommittedText[col], hlId: 0)
     return Cell(text: " ", hlId: 0)
   if s.wildmenuActive and row == s.rows - 2:
     if col >= 0 and col < s.wildmenuText.len:
@@ -379,6 +388,8 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
           info "cmdline entered", prefix = prefix, pos = pos
         state.cmdlinePos = pos
         state.cmdlineActive = true
+        state.cmdlineCommitPending = false
+        state.cmdlineCommittedText = ""
         state.cmdlineText =
           if (prefix.len + contentText.len) > state.cols:
             (prefix & contentText)[0 ..< state.cols]
@@ -405,10 +416,15 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
       for _ in 1 ..< evLen:
         s.skip_msg()
       info "cmdline hide"
+      if state.cmdlineCommitPending:
+        state.cmdlineCommittedText = state.cmdlineText
+      else:
+        state.cmdlineCommittedText = ""
       state.cmdlineActive = false
       state.cmdlineText = ""
       state.cmdlinePos = 0
       state.cmdlineOffset = 0
+      state.cmdlineCommitPending = false
       state.needsRedraw = true
     of "wildmenu_show":
       for _ in 1 ..< evLen:

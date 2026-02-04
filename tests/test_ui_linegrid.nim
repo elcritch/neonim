@@ -426,3 +426,22 @@ suite "ui linegrid":
     check state.cmdlineText.len == 0
     check state.cmdlinePos == 0
     check state.cmdlineOffset == 0
+    check state.cmdlineCommittedText.len == 0
+    check not state.cmdlineCommitPending
+
+  test "cmdline_hide keeps last command when commit pending":
+    var state = initLineGridState(3, 12)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+    state.cmdlineActive = true
+    state.cmdlineText = ":write"
+    state.cmdlineCommitPending = true
+
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(s, "cmdline_hide")
+    )
+    handleRedraw(state, hl, params)
+    check not state.cmdlineActive
+    check state.cmdlineCommittedText == ":write"
+    check state.renderedCell(2, 0).text == ":"
+    check state.renderedCell(2, 1).text == "w"

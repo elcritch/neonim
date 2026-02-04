@@ -109,6 +109,11 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
     discard client.request("nvim_input", rpcPackParams(s))
 
   window.onButtonPress = proc(button: Button) =
+    if button == KeyEnter and state.cmdlineActive:
+      state.cmdlineCommitPending = true
+    if button == KeyEscape:
+      state.cmdlineCommitPending = false
+      state.cmdlineCommittedText = ""
     let input = keyToNvimInput(button)
     if input.len > 0:
       discard client.request("nvim_input", rpcPackParams(input))
