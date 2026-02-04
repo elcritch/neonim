@@ -75,7 +75,7 @@ proc buildOverlayLayout(
 proc makeRenderTree*(
     w, h: float32, monoFont: UiFont, state: LineGridState, cellW, cellH: float32
 ): Renders =
-  var renders = Renders(layers: initOrderedTable[ZLevel, RenderList]())
+  var renders = Renders()
   let baseZ = 0.ZLevel
   let overlayZ = 1.ZLevel
 
