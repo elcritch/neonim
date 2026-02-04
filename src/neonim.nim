@@ -135,13 +135,26 @@ proc redrawGui*(runtime: GuiRuntime) =
   when not UseMetalBackend:
     runtime.window.swapBuffers()
 
+proc safeRequest(
+    runtime: GuiRuntime, methodName: string, params: RpcParamsBuffer
+): bool =
+  if not runtime.client.isRunning():
+    runtime.appRunning = false
+    return false
+  try:
+    discard runtime.client.request(methodName, params)
+    return true
+  except CatchableError as err:
+    warn "nvim request failed", rpcMethod = methodName, error = err.msg
+    runtime.appRunning = false
+    return false
+
 proc tryResizeUi*(runtime: GuiRuntime) =
   let sz = runtime.window.logicalSize()
   let newSz = computeGridSize(sz, runtime.cellW, runtime.cellH)
   if newSz.rows != runtime.state.rows or newSz.cols != runtime.state.cols:
-    discard runtime.client.request(
-      "nvim_ui_try_resize", rpcPackParams(newSz.cols, newSz.rows)
-    )
+    discard
+      runtime.safeRequest("nvim_ui_try_resize", rpcPackParams(newSz.cols, newSz.rows))
 
 proc handleGuiTest*(runtime: GuiRuntime) =
   let cfg = runtime.testCfg
@@ -149,7 +162,7 @@ proc handleGuiTest*(runtime: GuiRuntime) =
     return
   if not runtime.testSent and cfg.input.len > 0 and
       (epochTime() - runtime.testStart) > 0.1:
-    discard runtime.client.request("nvim_input", rpcPackParams(cfg.input))
+    discard runtime.safeRequest("nvim_input", rpcPackParams(cfg.input))
     runtime.testSent = true
   if not runtime.testPassed and cfg.expectCmdlinePrefix.len > 0:
     if runtime.state.cmdlineActive and
@@ -162,6 +175,9 @@ proc handleGuiTest*(runtime: GuiRuntime) =
 proc stepGui*(runtime: GuiRuntime): bool =
   pollEvents()
   runtime.client.poll()
+  if not runtime.client.isRunning():
+    runtime.appRunning = false
+    return false
   runtime.handleGuiTest()
   if runtime.state.needsRedraw:
     runtime.redrawGui()
@@ -245,8 +261,11 @@ proc initGuiRuntime*(
     runtime.state.needsRedraw = true
 
   runtime.window.onRune = proc(r: Rune) =
+    let buttons = runtime.window.buttonDown()
+    if buttons[KeyLeftControl] or buttons[KeyRightControl]:
+      return
     let s = $r
-    discard runtime.client.request("nvim_input", rpcPackParams(s))
+    discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.onButtonPress = proc(button: Button) =
     if button == KeyEnter and runtime.state.cmdlineActive:
@@ -254,9 +273,11 @@ proc initGuiRuntime*(
     if button == KeyEscape:
       runtime.state.cmdlineCommitPending = false
       runtime.state.cmdlineCommittedText = ""
-    let input = keyToNvimInput(button)
+    let buttons = runtime.window.buttonDown()
+    let ctrlDown = buttons[KeyLeftControl] or buttons[KeyRightControl]
+    let input = keyToNvimInput(button, ctrlDown)
     if input.len > 0:
-      discard runtime.client.request("nvim_input", rpcPackParams(input))
+      discard runtime.safeRequest("nvim_input", rpcPackParams(input))
 
 proc runWindyFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): bool =
   let runtime = initGuiRuntime(config, testCfg)

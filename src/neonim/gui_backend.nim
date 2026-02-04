@@ -25,7 +25,41 @@ proc monoMetrics*(font: UiFont): tuple[advance: float32, lineHeight: float32] =
   let adv = (px.typeface.getAdvance(Rune('M')) * px.scale)
   (adv, lineH/2)
 
-proc keyToNvimInput*(button: Button): string =
+proc ctrlKeyToNvimInput(button: Button): string =
+  case button
+  of KeyA: "<C-a>"
+  of KeyB: "<C-b>"
+  of KeyC: "<C-c>"
+  of KeyD: "<C-d>"
+  of KeyE: "<C-e>"
+  of KeyF: "<C-f>"
+  of KeyG: "<C-g>"
+  of KeyH: "<C-h>"
+  of KeyI: "<C-i>"
+  of KeyJ: "<C-j>"
+  of KeyK: "<C-k>"
+  of KeyL: "<C-l>"
+  of KeyM: "<C-m>"
+  of KeyN: "<C-n>"
+  of KeyO: "<C-o>"
+  of KeyP: "<C-p>"
+  of KeyQ: "<C-q>"
+  of KeyR: "<C-r>"
+  of KeyS: "<C-s>"
+  of KeyT: "<C-t>"
+  of KeyU: "<C-u>"
+  of KeyV: "<C-v>"
+  of KeyW: "<C-w>"
+  of KeyX: "<C-x>"
+  of KeyY: "<C-y>"
+  of KeyZ: "<C-z>"
+  else: ""
+
+proc keyToNvimInput*(button: Button, ctrlDown: bool): string =
+  if ctrlDown:
+    let ctrlInput = ctrlKeyToNvimInput(button)
+    if ctrlInput.len > 0:
+      return ctrlInput
   case button
   of KeyEnter: "<CR>"
   of KeyBackspace: "<BS>"
@@ -159,4 +193,3 @@ proc makeRenderTree*(
       cmp(x[0], y[0])
   )
   result = renders
-
