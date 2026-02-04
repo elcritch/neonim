@@ -6,12 +6,7 @@ import vmath
 import msgpack4nim
 
 import figdraw/[commons, fignodes, figrender, windyshim]
-
-import ./neonim/types
-import ./neonim/rpc
-import ./neonim/gui_backend_windy_figdraw
-import ./neonim/nvim_client
-import ./neonim/ui_linegrid
+import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend]
 
 proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] =
   let cols = max(1, int(size.x / cellW))
