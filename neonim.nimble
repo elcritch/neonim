@@ -9,7 +9,7 @@ srcDir        = "src"
 requires "nim >= 2.2.6"
 requires "msgpack4nim"
 
-requires "https://github.com/elcritch/figdraw[windy] >= 0.15"
+requires "https://github.com/elcritch/figdraw[windy] >= 0.16"
 
 feature "references":
   requires "https://github.com/neovim/neovim"
