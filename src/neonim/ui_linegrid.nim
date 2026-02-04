@@ -1,6 +1,7 @@
 import std/[options, streams, tables]
 import msgpack4nim
 import chroma
+import chronicles
 
 import ./rpc
 import ./nvim_client
@@ -370,6 +371,8 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
             s.skip_msg()
 
         let prefix = firstcText & promptText
+        if firstcText == ":" or (prefix.len > 0 and prefix[0] == ':'):
+          info "cmdline entered", prefix = prefix, pos = pos
         state.cmdlinePos = pos
         state.cmdlineActive = true
         state.cmdlineText =
