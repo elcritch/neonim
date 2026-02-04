@@ -316,6 +316,101 @@ suite "ui linegrid":
     check state.renderedCell(2, 1).text == "e"
     check state.renderedCell(2, 2).text == " "
 
+  test "cmdline_show parses text when chunk starts with string":
+    var state = initLineGridState(2, 12)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "cmdline_show",
+          proc(s: var MsgStream) =
+            s.pack_array(6)
+            s.pack_array(1)
+            s.pack_array(2)
+            s.pack("set")
+            s.pack(0) # hl id
+            s.pack(1) # pos
+            s.pack(":") # firstc
+            s.pack("") # prompt
+            s.pack(0) # indent
+            s.pack(0) # level
+          ,
+        )
+    )
+    handleRedraw(state, hl, params)
+    check state.cmdlineActive
+    check state.cmdlineText == ":set"
+
+  test "cmdline_show combines firstc and prompt prefix":
+    var state = initLineGridState(2, 16)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "cmdline_show",
+          proc(s: var MsgStream) =
+            s.pack_array(6)
+            s.pack_array(1)
+            s.pack_array(2)
+            s.pack(0) # hl id
+            s.pack("foo")
+            s.pack(3) # pos
+            s.pack("?") # firstc
+            s.pack("Find: ") # prompt
+            s.pack(0) # indent
+            s.pack(0) # level
+          ,
+        )
+    )
+    handleRedraw(state, hl, params)
+    check state.cmdlineActive
+    check state.cmdlineText == "?Find: foo"
+    check state.cmdlineOffset == "?Find: ".len
+
+  test "cmdline_pos updates cursor based on prefix offset":
+    var state = initLineGridState(3, 10)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+
+    let showParams = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "cmdline_show",
+          proc(s: var MsgStream) =
+            s.pack_array(6)
+            s.pack_array(1)
+            s.pack_array(2)
+            s.pack(0)
+            s.pack("abc")
+            s.pack(2) # pos
+            s.pack(":") # firstc
+            s.pack("") # prompt
+            s.pack(0)
+            s.pack(0),
+        )
+    )
+    handleRedraw(state, hl, showParams)
+    check state.cmdlineActive
+    check state.cursorRow == 2
+    check state.cursorCol == 3 # offset 1 + pos 2
+
+    let posParams = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "cmdline_pos",
+          proc(s: var MsgStream) =
+            s.pack_array(1)
+            s.pack(0),
+        )
+    )
+    handleRedraw(state, hl, posParams)
+    check state.cursorCol == 1
+
   test "cmdline_hide clears cmdline overlay":
     var state = initLineGridState(3, 10)
     var hl = HlState(attrs: initTable[int64, HlAttr]())
@@ -328,3 +423,6 @@ suite "ui linegrid":
     )
     handleRedraw(state, hl, params)
     check not state.cmdlineActive
+    check state.cmdlineText.len == 0
+    check state.cmdlinePos == 0
+    check state.cmdlineOffset == 0
