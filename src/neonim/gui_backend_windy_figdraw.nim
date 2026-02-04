@@ -8,26 +8,17 @@ import chroma
 import msgpack4nim
 import pkg/pixie/fonts
 
-import figdraw/commons
-import figdraw/fignodes
-import figdraw/figrender as glrenderer
-import figdraw/windyshim
+import figdraw/[commons, fignodes, figrender, windyshim]
+
 when not UseMetalBackend:
   import figdraw/utils/glutils
 
+import ./types
 import ./rpc
 import ./nvim_client
 import ./ui_linegrid
 
-type GuiConfig* = object
-  nvimCmd*: string
-  nvimArgs*: seq[string]
-  windowTitle*: string
-
-  fontTypeface*: string
-  fontSize*: float32
-
-proc monoMetrics(font: UiFont): tuple[advance: float32, lineHeight: float32] =
+proc monoMetrics*(font: UiFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
   let lineH =
     if px.lineHeight >= 0:
@@ -37,7 +28,7 @@ proc monoMetrics(font: UiFont): tuple[advance: float32, lineHeight: float32] =
   let adv = (px.typeface.getAdvance(Rune('M')) * px.scale)
   (adv, lineH.descaled())
 
-proc keyToNvimInput(button: Button): string =
+proc keyToNvimInput*(button: Button): string =
   case button
   of KeyEnter: "<CR>"
   of KeyBackspace: "<BS>"
@@ -84,30 +75,34 @@ proc buildOverlayLayout(
     x += cellW
   placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
 
-proc makeRenderTree(
+proc makeRenderTree*(
     w, h: float32, monoFont: UiFont, state: LineGridState, cellW, cellH: float32
 ): Renders =
-  var list = RenderList()
+  var renders = Renders(layers: initOrderedTable[ZLevel, RenderList]())
+  let baseZ = 0.ZLevel
+  let overlayZ = 1.ZLevel
 
-  let rootIdx = list.addRoot(
+  let rootIdx = renders.addRoot(
+    baseZ,
     Fig(
       kind: nkRectangle,
       childCount: 0,
-      zlevel: 0.ZLevel,
+      zlevel: baseZ,
       screenBox: rect(0, 0, w, h),
       fill: state.colors.bg,
-    )
+    ),
   )
 
   for row in 0 ..< state.rows:
     let y = row.float32 * cellH
     let layout = buildRowLayout(monoFont, state, row, 0'f32, y, cellW)
-    discard list.addChild(
+    discard renders.addChild(
+      baseZ,
       rootIdx,
       Fig(
         kind: nkText,
         childCount: 0,
-        zlevel: 0.ZLevel,
+        zlevel: baseZ,
         screenBox: rect(0, y, w, cellH),
         fill: state.colors.fg,
         textLayout: layout,
@@ -119,12 +114,12 @@ proc makeRenderTree(
     let y = row.float32 * cellH
     let layout =
       buildOverlayLayout(monoFont, state, state.wildmenuText, 0'f32, y, cellW)
-    discard list.addChild(
-      rootIdx,
+    discard renders.addRoot(
+      overlayZ,
       Fig(
         kind: nkText,
         childCount: 0,
-        zlevel: 1.ZLevel,
+        zlevel: overlayZ,
         screenBox: rect(0, y, w, cellH),
         fill: state.colors.fg,
         textLayout: layout,
@@ -135,12 +130,12 @@ proc makeRenderTree(
     let row = state.rows - 1
     let y = row.float32 * cellH
     let layout = buildOverlayLayout(monoFont, state, state.cmdlineText, 0'f32, y, cellW)
-    discard list.addChild(
-      rootIdx,
+    discard renders.addRoot(
+      overlayZ,
       Fig(
         kind: nkText,
         childCount: 0,
-        zlevel: 1.ZLevel,
+        zlevel: overlayZ,
         screenBox: rect(0, y, w, cellH),
         fill: state.colors.fg,
         textLayout: layout,
@@ -151,137 +146,20 @@ proc makeRenderTree(
       state.cursorCol < state.cols:
     let cx = state.cursorCol.float32 * cellW
     let cy = state.cursorRow.float32 * 2 * cellH
-    discard list.addChild(
-      rootIdx,
+    discard renders.addRoot(
+      overlayZ,
       Fig(
         kind: nkRectangle,
         childCount: 0,
-        zlevel: 1.ZLevel,
+        zlevel: overlayZ,
         screenBox: rect(cx, cy, cellW, 2 * cellH),
         fill: rgba(220, 220, 220, 80).color,
       ),
     )
 
-  result = Renders(layers: initOrderedTable[ZLevel, RenderList]())
-  result.layers[0.ZLevel] = list
-
-proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] =
-  let cols = max(1, int(size.x / cellW))
-  let rows = max(1, int(size.y / cellH))
-  (rows, cols)
-
-proc rpcPackUiAttachParams(
-    cols, rows: int, opts: openArray[(string, bool)]
-): RpcParamsBuffer =
-  var s = MsgStream.init()
-  s.pack_array(3)
-  s.pack(cols)
-  s.pack(rows)
-  s.pack_map(opts.len)
-  for (k, v) in opts:
-    s.pack(k)
-    s.pack(v)
-  s.setPosition(s.data.len)
-  RpcParamsBuffer(buf: s)
-
-proc runWindyFigdrawGui*(config: GuiConfig) =
-  when not defined(emscripten):
-    setFigDataDir(getCurrentDir() / "data")
-
-  var app_running = true
-  let size = ivec2(1000, 700)
-  let title = "Neonim"
-  let typefaceId = loadTypeface(config.fontTypeface)
-  let monoFont = UiFont(typefaceId: typefaceId, size: config.fontSize)
-  let window = newWindyWindow(size = size, fullscreen = false, title = title)
-  window.runeInputEnabled = true
-
-  if getEnv("HDI") != "":
-    setFigUiScale getEnv("HDI").parseFloat()
-  else:
-    setFigUiScale window.contentScale()
-  if size != size.scaled():
-    window.size = size.scaled()
-
-  let renderer = newFigRenderer(atlasSize = 2048)
-
-  var client = newNeovimClient()
-  client.start(config.nvimCmd, config.nvimArgs)
-  discard client.discoverMetadata()
-
-  var hl = HlState(attrs: initTable[int64, HlAttr]())
-  let sz = window.logicalSize()
-  let (cellW, cellH) = monoMetrics(monoFont)
-
-  var (rows, cols) = computeGridSize(sz, cellW, cellH)
-  var state = initLineGridState(rows, cols)
-
-  client.onNotification = proc(methodName: string, params: RpcParamsBuffer) =
-    if methodName == "redraw":
-      handleRedraw(state, hl, params)
-
-  block attachUi:
-    let opts = [
-      ("rgb", true),
-      ("ext_linegrid", true),
-      ("ext_hlstate", true),
-      ("ext_cmdline", true),
-      ("ext_wildmenu", true),
-    ]
-    discard client.callAndWait(
-      "nvim_ui_attach", rpcPackUiAttachParams(cols, rows, opts), timeout = 3.0
-    )
-
-  proc redraw() =
-    let sz = window.logicalSize()
-    var renders = makeRenderTree(sz.x, sz.y, monoFont, state, cellW, cellH)
-    renderer.renderFrame(renders, sz)
-    when not UseMetalBackend:
-      window.swapBuffers()
-
-  proc tryResizeUi() =
-    let sz = window.logicalSize()
-    let newSz = computeGridSize(sz, cellW, cellH)
-    if newSz.rows != state.rows or newSz.cols != state.cols:
-      discard
-        client.request("nvim_ui_try_resize", rpcPackParams(newSz.cols, newSz.rows))
-
-  window.onCloseRequest = proc() =
-    app_running = false
-  window.onResize = proc() =
-    tryResizeUi()
-    state.needsRedraw = true
-
-  window.onRune = proc(r: Rune) =
-    let s = $r
-    discard client.request("nvim_input", rpcPackParams(s))
-
-  window.onButtonPress = proc(button: Button) =
-    let input = keyToNvimInput(button)
-    if input.len > 0:
-      discard client.request("nvim_input", rpcPackParams(input))
-
-  try:
-    while app_running:
-      pollEvents()
-      client.poll()
-      if state.needsRedraw:
-        redraw()
-        state.needsRedraw = false
-      when not defined(emscripten):
-        sleep(8)
-  finally:
-    when not defined(emscripten):
-      window.close()
-    client.stop()
-
-when isMainModule:
-  runWindyFigdrawGui(
-    GuiConfig(
-      nvimCmd: "nvim",
-      nvimArgs: @[],
-      windowTitle: "neonim (windy + figdraw)",
-      fontTypeface: "HackNerdFont-Regular.ttf",
-      fontSize: 16.0'f32,
-    )
+  renders.layers.sort(
+    proc(x, y: auto): int =
+      cmp(x[0], y[0])
   )
+  result = renders
+
