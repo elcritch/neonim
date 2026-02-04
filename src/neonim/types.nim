@@ -8,3 +8,8 @@ type GuiConfig* = object
   fontTypeface*: string
   fontSize*: float32
 
+type GuiTestConfig* = object
+  enabled*: bool
+  input*: string
+  expectCmdlinePrefix*: string
+  timeoutSeconds*: float
