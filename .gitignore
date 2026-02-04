@@ -17,3 +17,4 @@ deps/
 .nimcache
 nimbledeps
 .nvimlog
+nodes.txt
