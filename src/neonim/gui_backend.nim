@@ -133,7 +133,7 @@ proc addRowRun(
         kind: nkRectangle,
         childCount: 0,
         zlevel: baseZ,
-        screenBox: rect(x, y, w, cellH),
+        screenBox: rect(x, 2*y, w, 2*cellH),
         fill: bg.get(),
       ),
     )
