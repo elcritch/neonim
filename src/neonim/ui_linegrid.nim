@@ -208,7 +208,7 @@ proc unpackCmdlineContentText(s: MsgStream): string =
       continue
     let chunkLen = s.unpack_array()
     for cidx in 0 ..< chunkLen:
-      if cidx == 1:
+      if cidx == 0:
         if s.is_string() or s.is_bin():
           result.add unpackStringOrBin(s)
         else:
