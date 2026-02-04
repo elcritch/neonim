@@ -1,11 +1,9 @@
 when defined(emscripten):
-  import std/[unicode, strutils]
+  import std/[unicode]
 else:
-  import std/[os, unicode, strutils]
-import std/[streams]
+  import std/[unicode]
 
 import chroma
-import msgpack4nim
 import pkg/pixie/fonts
 
 import figdraw/[commons, fignodes, figrender, windyshim]
@@ -13,7 +11,7 @@ import figdraw/[commons, fignodes, figrender, windyshim]
 when not UseMetalBackend:
   import figdraw/utils/glutils
 
-import ./[types, rpc, nvim_client, ui_linegrid]
+import ./[ui_linegrid]
 
 proc monoMetrics*(font: UiFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
