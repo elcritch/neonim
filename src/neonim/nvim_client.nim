@@ -56,6 +56,8 @@ proc unpackStringOrBin(s: MsgStream): string =
 proc parseMetadata*(buf: RpcParamsBuffer): NeovimMetadata =
   var s = MsgStream.init(buf.buf.data)
   s.setPosition(0)
+  if not s.is_array():
+    raise newException(NeovimError, "vim_get_api_info result must be array")
   let outerLen = s.unpack_array()
   if outerLen != 2:
     raise
@@ -66,13 +68,22 @@ proc parseMetadata*(buf: RpcParamsBuffer): NeovimMetadata =
     raise newException(NeovimError, "vim_get_api_info metadata must be map")
   let mapLen = s.unpack_map()
   for _ in 0 ..< mapLen:
+    if not (s.is_string() or s.is_bin()):
+      s.skip_msg() # key
+      s.skip_msg() # value
+      continue
     let key = unpackStringOrBin(s)
     case key
     of "version":
       if not s.is_map():
-        raise newException(NeovimError, "metadata.version must be map")
+        s.skip_msg()
+        continue
       let verLen = s.unpack_map()
       for _ in 0 ..< verLen:
+        if not (s.is_string() or s.is_bin()):
+          s.skip_msg()
+          s.skip_msg()
+          continue
         let vkey = unpackStringOrBin(s)
         case vkey
         of "api_level":
@@ -87,7 +98,10 @@ proc parseMetadata*(buf: RpcParamsBuffer): NeovimMetadata =
       else:
         let optLen = s.unpack_array()
         for _ in 0 ..< optLen:
-          result.uiOptions.add unpackStringOrBin(s)
+          if s.is_string() or s.is_bin():
+            result.uiOptions.add unpackStringOrBin(s)
+          else:
+            s.skip_msg()
     else:
       s.skip_msg()
 
