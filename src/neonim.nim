@@ -47,6 +47,9 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
     window.size = size.scaled()
 
   let renderer = newFigRenderer(atlasSize = 2048)
+  when UseMetalBackend:
+    let metalHandle = attachMetalLayer(window, renderer.ctx.metalDevice())
+    renderer.ctx.presentLayer = metalHandle.layer
 
   var client = newNeovimClient()
   client.start(config.nvimCmd, config.nvimArgs)
@@ -75,7 +78,13 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
       "nvim_ui_attach", rpcPackUiAttachParams(cols, rows, opts), timeout = 3.0
     )
 
+  when UseMetalBackend:
+    proc updateMetalLayer() =
+      metalHandle.updateMetalLayer(window)
+
   proc redraw() =
+    when UseMetalBackend:
+      updateMetalLayer()
     let sz = window.logicalSize()
     var renders = makeRenderTree(sz.x, sz.y, monoFont, state, cellW, cellH)
     renderer.renderFrame(renders, sz)
