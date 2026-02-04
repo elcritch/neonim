@@ -1,6 +1,7 @@
 ## Neonim - Neovim GUI backend in Nim.
 ##
 import std/[streams, os, strutils, times]
+import chronicles
 
 import vmath
 import msgpack4nim
@@ -29,7 +30,7 @@ type GuiRuntime* = ref object
 
 proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] =
   let cols = max(1, int(size.x / cellW))
-  let rows = max(1, int(size.y / cellH))
+  let rows = max(1, int(size.y / cellH / 2))
   (rows, cols)
 
 proc rpcPackUiAttachParams(
@@ -215,6 +216,7 @@ proc initGuiRuntime*(
   let (cellW, cellH) = monoMetrics(result.monoFont)
   result.cellW = cellW
   result.cellH = cellH
+  warn "mono metrics: ", cellW = cellW, cellH = cellH
 
   var (rows, cols) = computeGridSize(sz, cellW, cellH)
   result.state = initLineGridState(rows, cols)

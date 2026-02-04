@@ -23,7 +23,7 @@ proc monoMetrics*(font: UiFont): tuple[advance: float32, lineHeight: float32] =
     else:
       px.defaultLineHeight()
   let adv = (px.typeface.getAdvance(Rune('M')) * px.scale)
-  (adv, lineH.descaled())
+  (adv, lineH/2)
 
 proc keyToNvimInput*(button: Button): string =
   case button
