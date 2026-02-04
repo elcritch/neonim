@@ -1,7 +1,7 @@
 when defined(emscripten):
-  import std/[unicode]
+  import std/[unicode, options, tables]
 else:
-  import std/[unicode]
+  import std/[unicode, options, tables]
 
 import chroma
 import pkg/pixie/fonts
@@ -74,22 +74,6 @@ proc keyToNvimInput*(button: Button, ctrlDown: bool): string =
   of KeyPageDown: "<PageDown>"
   else: ""
 
-proc buildRowLayout(
-    monoFont: UiFont, state: LineGridState, row: int, x0, y0, cellW: float32
-): GlyphArrangement =
-  var glyphs: seq[(Rune, Vec2)]
-  glyphs.setLen(state.cols)
-  var x = x0
-  for col in 0 ..< state.cols:
-    let cell = state.cells[state.cellIndex(row, col)]
-    var r: Rune = Rune(' ')
-    for rr in cell.text.runes:
-      r = rr
-      break
-    glyphs[col] = (r, vec2(x, y0))
-    x += cellW
-  placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
-
 proc buildOverlayLayout(
     monoFont: UiFont, state: LineGridState, text: string, x0, y0, cellW: float32
 ): GlyphArrangement =
@@ -104,8 +88,80 @@ proc buildOverlayLayout(
     x += cellW
   placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
 
+proc resolveColors(
+    state: LineGridState, hl: HlState, hlId: int64
+): tuple[fg: Color, bg: Option[Color]] =
+  result.fg = state.colors.fg
+  result.bg = none(Color)
+  if hlId == 0:
+    return
+  if not hl.attrs.hasKey(hlId):
+    return
+  let attr = hl.attrs[hlId]
+  if attr.fg.isSome:
+    result.fg = attr.fg.get()
+  if attr.bg.isSome:
+    let bg = attr.bg.get()
+    if bg != state.colors.bg:
+      result.bg = some(bg)
+
+proc runeForCell(cell: Cell): Rune =
+  for rr in cell.text.runes:
+    return rr
+  Rune(' ')
+
+proc addRowRun(
+    renders: var Renders,
+    baseZ: ZLevel,
+    rootIdx: FigIdx,
+    monoFont: UiFont,
+    state: LineGridState,
+    row: int,
+    startCol, endCol: int,
+    fg: Color,
+    bg: Option[Color],
+    cellW, cellH: float32,
+) =
+  let y = row.float32 * cellH
+  let x = startCol.float32 * cellW
+  let w = (endCol - startCol).float32 * cellW
+  if bg.isSome:
+    discard renders.addChild(
+      baseZ,
+      rootIdx,
+      Fig(
+        kind: nkRectangle,
+        childCount: 0,
+        zlevel: baseZ,
+        screenBox: rect(x, y, w, cellH),
+        fill: bg.get(),
+      ),
+    )
+
+  var glyphs: seq[(Rune, Vec2)]
+  glyphs.setLen(endCol - startCol)
+  var gx = x
+  for col in startCol ..< endCol:
+    let cell = state.cells[state.cellIndex(row, col)]
+    glyphs[col - startCol] = (runeForCell(cell), vec2(gx, y))
+    gx += cellW
+  let layout = placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
+  discard renders.addChild(
+    baseZ,
+    rootIdx,
+    Fig(
+      kind: nkText,
+      childCount: 0,
+      zlevel: baseZ,
+      screenBox: rect(x, y, w, cellH),
+      fill: fg,
+      textLayout: layout,
+    ),
+  )
+
 proc makeRenderTree*(
-    w, h: float32, monoFont: UiFont, state: LineGridState, cellW, cellH: float32
+    w, h: float32, monoFont: UiFont, state: LineGridState, hl: HlState,
+    cellW, cellH: float32
 ): Renders =
   var renders = Renders()
   let baseZ = 0.ZLevel
@@ -123,20 +179,34 @@ proc makeRenderTree*(
   )
 
   for row in 0 ..< state.rows:
-    let y = row.float32 * cellH
-    let layout = buildRowLayout(monoFont, state, row, 0'f32, y, cellW)
-    discard renders.addChild(
-      baseZ,
-      rootIdx,
-      Fig(
-        kind: nkText,
-        childCount: 0,
-        zlevel: baseZ,
-        screenBox: rect(0, y, w, cellH),
-        fill: state.colors.fg,
-        textLayout: layout,
-      ),
-    )
+    var col = 0
+    while col < state.cols:
+      let cell = state.cells[state.cellIndex(row, col)]
+      let colors = resolveColors(state, hl, cell.hlId)
+      let runFg = colors.fg
+      let runBg = colors.bg
+      var endCol = col + 1
+      while endCol < state.cols:
+        let nextCell = state.cells[state.cellIndex(row, endCol)]
+        let nextColors = resolveColors(state, hl, nextCell.hlId)
+        if nextColors.fg != runFg or nextColors.bg != runBg:
+          break
+        endCol.inc
+      addRowRun(
+        renders,
+        baseZ,
+        rootIdx,
+        monoFont,
+        state,
+        row,
+        col,
+        endCol,
+        runFg,
+        runBg,
+        cellW,
+        cellH,
+      )
+      col = endCol
 
   if state.wildmenuActive and state.rows >= 2:
     let row = state.rows - 2

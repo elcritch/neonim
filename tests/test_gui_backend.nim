@@ -1,4 +1,4 @@
-import std/[os, unicode, unittest]
+import std/[os, unicode, unittest, tables]
 
 import figdraw/commons
 import figdraw/common/fonttypes
@@ -25,7 +25,8 @@ suite "gui backend renders":
     state.cmdlineActive = true
     state.cmdlineText = ":"
 
-    let renders = makeRenderTree(w, h, monoFont, state, cellW, cellH)
+    let hl = HlState(attrs: initTable[int64, HlAttr]())
+    let renders = makeRenderTree(w, h, monoFont, state, hl, cellW, cellH)
 
     var foundColon = false
     var colonY = 0.0'f32

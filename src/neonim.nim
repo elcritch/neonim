@@ -121,7 +121,8 @@ proc redrawGui*(runtime: GuiRuntime) =
   let sz = runtime.window.logicalSize()
   let phys = vec2(runtime.window.size())
   var renders = makeRenderTree(
-    sz.x, sz.y, runtime.monoFont, runtime.state, runtime.cellW, runtime.cellH
+    sz.x, sz.y, runtime.monoFont, runtime.state, runtime.hl, runtime.cellW,
+    runtime.cellH,
   )
   dumpFigNodes(
     renders,
