@@ -214,6 +214,30 @@ suite "ui linegrid":
     check state.cols == 4
     check state.cells[state.cellIndex(0, 0)].text == "X"
 
+  test "grid_resize preserves current colors":
+    var state = initLineGridState(1, 1)
+    state.colors.fg = rgba(0x88'u8, 0x99'u8, 0xaa'u8, 255).color
+    state.colors.bg = rgba(0x12'u8, 0x34'u8, 0x56'u8, 255).color
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "grid_resize",
+          proc(s: var MsgStream) =
+            s.pack_array(3)
+            s.pack(0) # grid
+            s.pack(5) # cols
+            s.pack(4) # rows
+          ,
+        )
+    )
+    handleRedraw(state, hl, params)
+
+    check state.colors.fg == rgba(0x88'u8, 0x99'u8, 0xaa'u8, 255).color
+    check state.colors.bg == rgba(0x12'u8, 0x34'u8, 0x56'u8, 255).color
+
   test "grid_clear blanks the grid":
     var state = initLineGridState(1, 3)
     state.cells[state.cellIndex(0, 1)].text = "Q"

@@ -110,13 +110,21 @@ proc clearPanelHighlight*(s: var LineGridState) =
 proc resize*(s: var LineGridState, rows, cols: int) =
   if rows == s.rows and cols == s.cols:
     return
-  let old = s
-  s = initLineGridState(rows, cols)
-  let copyRows = min(old.rows, rows)
-  let copyCols = min(old.cols, cols)
+  let oldRows = s.rows
+  let oldCols = s.cols
+  let oldCells = s.cells
+  s.rows = rows
+  s.cols = cols
+  s.cells = newSeq[Cell](rows * cols)
+  for i in 0 ..< s.cells.len:
+    s.cells[i] = Cell(text: " ", hlId: 0)
+  let copyRows = min(oldRows, rows)
+  let copyCols = min(oldCols, cols)
   for r in 0 ..< copyRows:
     for c in 0 ..< copyCols:
-      s.cells[s.cellIndex(r, c)] = old.cells[old.cellIndex(r, c)]
+      s.cells[s.cellIndex(r, c)] = oldCells[r * oldCols + c]
+  s.cursorRow = min(max(0, s.cursorRow), rows - 1)
+  s.cursorCol = min(max(0, s.cursorCol), cols - 1)
   s.needsRedraw = true
 
 proc scroll*(s: var LineGridState, top, bot, left, right, rows, cols: int) =
