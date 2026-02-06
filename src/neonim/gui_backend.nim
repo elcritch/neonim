@@ -186,6 +186,50 @@ proc runeForCell(cell: Cell): Rune =
     return rr
   Rune(' ')
 
+proc isSplitBorderRune(r: Rune): bool =
+  r == Rune('|') or r == Rune(0x2502) or r == Rune(0x2503) or r == Rune(0x250A) or
+    r == Rune(0x250B)
+
+proc isSplitBorderCell(state: LineGridState, row, col: int): bool =
+  if row < 0 or row >= state.rows or col < 0 or col >= state.cols:
+    return false
+  let rune = runeForCell(state.cells[state.cellIndex(row, col)])
+  if not isSplitBorderRune(rune):
+    return false
+  # Treat it as a pane border only when adjacent rows share the same border rune.
+  let upMatches =
+    row > 0 and runeForCell(state.cells[state.cellIndex(row - 1, col)]) == rune
+  let downMatches =
+    row + 1 < state.rows and
+    runeForCell(state.cells[state.cellIndex(row + 1, col)]) == rune
+  upMatches or downMatches
+
+proc fallbackPaneCols(
+    state: LineGridState, row, col: int
+): tuple[startCol, endColExclusive: int] =
+  if row < 0 or row >= state.rows or state.cols <= 0:
+    return (0, max(1, state.cols))
+
+  var anchorCol = min(state.cols - 1, max(0, col))
+  if state.isSplitBorderCell(row, anchorCol) and anchorCol > 0:
+    anchorCol.dec
+
+  var left = 0
+  for c in countdown(anchorCol, 0):
+    if state.isSplitBorderCell(row, c):
+      left = c + 1
+      break
+
+  var right = state.cols
+  for c in anchorCol ..< state.cols:
+    if state.isSplitBorderCell(row, c):
+      right = c
+      break
+
+  if right <= left:
+    return (0, state.cols)
+  (left, right)
+
 proc addRowRun(
     renders: var Renders,
     baseZ: ZLevel,
@@ -336,13 +380,28 @@ proc makeRenderTree*(
 
   if state.panelHighlightRow >= 0 and state.panelHighlightRow < state.rows:
     let py = state.panelHighlightRow.float32 * 2 * cellH
+    var px = 0'f32
+    var pw = w
+    var usedWinRect = false
+    if state.cursorGrid != 0 and state.winRects.hasKey(state.cursorGrid):
+      let winRect = state.winRects[state.cursorGrid]
+      if state.panelHighlightRow >= winRect.row and
+          state.panelHighlightRow < winRect.row + winRect.rows:
+        px = winRect.col.float32 * cellW
+        pw = winRect.cols.float32 * cellW
+        usedWinRect = true
+    if not usedWinRect:
+      let (startCol, endColExclusive) =
+        state.fallbackPaneCols(state.panelHighlightRow, state.panelHighlightCol)
+      px = startCol.float32 * cellW
+      pw = max(1, endColExclusive - startCol).float32 * cellW
     discard renders.addRoot(
       overlayZ,
       Fig(
         kind: nkRectangle,
         childCount: 0,
         zlevel: overlayZ,
-        screenBox: rect(0, py, w, 2 * cellH),
+        screenBox: rect(px, py, pw, 2 * cellH),
         fill: PanelHighlightFill,
       ),
     )

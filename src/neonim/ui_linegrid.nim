@@ -7,6 +7,12 @@ import ./rpc
 import ./nvim_client
 
 type
+  GridRect* = object
+    row*: int
+    col*: int
+    rows*: int
+    cols*: int
+
   Cell* = object
     text*: string
     hlId*: int64
@@ -33,6 +39,8 @@ type
     wildmenuText*: string
     wildmenuSelected*: int
     wildmenuItems*: seq[string]
+    cursorGrid*: int64
+    winRects*: Table[int64, GridRect]
     panelHighlightRow*: int
     panelHighlightCol*: int
 
@@ -68,6 +76,9 @@ proc initLineGridState*(rows, cols: int): LineGridState =
   result.wildmenuText = ""
   result.wildmenuSelected = -1
   result.wildmenuItems = @[]
+  result.cursorGrid = 0
+  result.winRects = initTable[int64, GridRect]()
+  result.winRects[0] = GridRect(row: 0, col: 0, rows: rows, cols: cols)
   result.panelHighlightRow = -1
   result.panelHighlightCol = -1
 
@@ -131,6 +142,7 @@ proc resize*(s: var LineGridState, rows, cols: int) =
       s.cells[s.cellIndex(r, c)] = oldCells[r * oldCols + c]
   s.cursorRow = min(max(0, s.cursorRow), rows - 1)
   s.cursorCol = min(max(0, s.cursorCol), cols - 1)
+  s.winRects[0] = GridRect(row: 0, col: 0, rows: rows, cols: cols)
   s.needsRedraw = true
 
 proc scroll*(s: var LineGridState, top, bot, left, right, rows, cols: int) =
@@ -343,10 +355,44 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
       for _ in 1 ..< evLen:
         let itemLen = s.unpack_array()
         if itemLen >= 3:
-          discard unpackInt64(s) # grid
+          state.cursorGrid = unpackInt64(s)
           state.cursorRow = int(unpackInt64(s))
           state.cursorCol = int(unpackInt64(s))
           for _ in 3 ..< itemLen:
+            s.skip_msg()
+        else:
+          for _ in 0 ..< itemLen:
+            s.skip_msg()
+      state.needsRedraw = true
+    of "win_pos":
+      # [grid, win, startrow, startcol, width, height]
+      for _ in 1 ..< evLen:
+        let itemLen = s.unpack_array()
+        if itemLen >= 6:
+          let grid = unpackInt64(s)
+          discard unpackInt64(s) # win
+          let startrow = int(unpackInt64(s))
+          let startcol = int(unpackInt64(s))
+          let width = int(unpackInt64(s))
+          let height = int(unpackInt64(s))
+          state.winRects[grid] =
+            GridRect(row: startrow, col: startcol, rows: height, cols: width)
+          for _ in 6 ..< itemLen:
+            s.skip_msg()
+        else:
+          for _ in 0 ..< itemLen:
+            s.skip_msg()
+      state.needsRedraw = true
+    of "win_hide", "win_close":
+      for _ in 1 ..< evLen:
+        let itemLen = s.unpack_array()
+        if itemLen >= 1:
+          let grid = unpackInt64(s)
+          if state.winRects.hasKey(grid):
+            state.winRects.del(grid)
+          if state.cursorGrid == grid:
+            state.cursorGrid = 0
+          for _ in 1 ..< itemLen:
             s.skip_msg()
         else:
           for _ in 0 ..< itemLen:

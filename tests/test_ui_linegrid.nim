@@ -284,8 +284,68 @@ suite "ui linegrid":
         )
     )
     handleRedraw(state, hl, params)
+    check state.cursorGrid == 0
     check state.cursorRow == 1
     check state.cursorCol == 0
+
+  test "win_pos stores grid bounds and cursor uses active grid":
+    var state = initLineGridState(8, 20)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+    let params = packParams(
+      proc(s: var MsgStream) =
+        s.pack_array(2)
+        packEvent(
+          s,
+          "win_pos",
+          proc(s: var MsgStream) =
+            s.pack_array(6)
+            s.pack(7) # grid
+            s.pack(1001) # win id
+            s.pack(2) # startrow
+            s.pack(3) # startcol
+            s.pack(10) # width
+            s.pack(4) # height
+          ,
+        )
+        packEvent(
+          s,
+          "grid_cursor_goto",
+          proc(s: var MsgStream) =
+            s.pack_array(3)
+            s.pack(7) # grid
+            s.pack(1) # row
+            s.pack(2) # col
+          ,
+        )
+    )
+    handleRedraw(state, hl, params)
+    check state.winRects.hasKey(7)
+    check state.winRects[7].row == 2
+    check state.winRects[7].col == 3
+    check state.winRects[7].cols == 10
+    check state.winRects[7].rows == 4
+    check state.cursorGrid == 7
+    check state.cursorRow == 1
+    check state.cursorCol == 2
+
+  test "win_hide removes grid bounds":
+    var state = initLineGridState(8, 20)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+    state.winRects[7] = GridRect(row: 1, col: 2, rows: 3, cols: 4)
+    state.cursorGrid = 7
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "win_hide",
+          proc(s: var MsgStream) =
+            s.pack_array(1)
+            s.pack(7),
+        )
+    )
+    handleRedraw(state, hl, params)
+    check(not state.winRects.hasKey(7))
+    check state.cursorGrid == 0
 
   test "grid_scroll moves cells within region and blanks uncovered area":
     var state = initLineGridState(3, 3)

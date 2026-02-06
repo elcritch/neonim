@@ -97,6 +97,8 @@ suite "gui backend renders":
     var state = initLineGridState(4, 20)
     state.cursorRow = -1
     state.cursorCol = -1
+    state.cursorGrid = 7
+    state.winRects[7] = GridRect(row: 1, col: 3, rows: 2, cols: 5)
     state.panelHighlightRow = 2
     let hl = HlState(attrs: initTable[int64, HlAttr]())
     let w = cellW * 20.0'f32
@@ -108,6 +110,37 @@ suite "gui backend renders":
       for node in renders.layers[1.ZLevel].nodes:
         if node.kind == nkRectangle and node.fill == PanelHighlightFill:
           foundPanel =
+            abs(node.screenBox.x - (3 * cellW)) < 0.001'f32 and
+            abs(node.screenBox.w - (5 * cellW)) < 0.001'f32 and
+            abs(node.screenBox.y - (2 * 2.0'f32 * cellH)) < 0.001'f32 and
+            abs(node.screenBox.h - (2 * cellH)) < 0.001'f32
+          if foundPanel:
+            break
+    check foundPanel
+
+  test "panel highlight falls back to split-bounded width in single grid":
+    let monoFont = testMonoFont()
+    let (cellW, cellH) = monoMetrics(monoFont)
+    var state = initLineGridState(4, 20)
+    state.cursorRow = -1
+    state.cursorCol = -1
+    state.cursorGrid = 0
+    state.panelHighlightRow = 2
+    state.panelHighlightCol = 10
+    for r in 0 ..< state.rows:
+      state.cells[state.cellIndex(r, 6)].text = "│"
+    let hl = HlState(attrs: initTable[int64, HlAttr]())
+    let w = cellW * 20.0'f32
+    let h = cellH * 8.0'f32
+    let renders = makeRenderTree(w, h, monoFont, state, hl, cellW, cellH)
+
+    var foundPanel = false
+    if 1.ZLevel in renders.layers:
+      for node in renders.layers[1.ZLevel].nodes:
+        if node.kind == nkRectangle and node.fill == PanelHighlightFill:
+          foundPanel =
+            abs(node.screenBox.x - (7 * cellW)) < 0.001'f32 and
+            abs(node.screenBox.w - (13 * cellW)) < 0.001'f32 and
             abs(node.screenBox.y - (2 * 2.0'f32 * cellH)) < 0.001'f32 and
             abs(node.screenBox.h - (2 * cellH)) < 0.001'f32
           if foundPanel:
