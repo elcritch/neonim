@@ -150,6 +150,29 @@ proc safeRequest(
     runtime.appRunning = false
     return false
 
+proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
+  let mousePos = vec2(runtime.window.mousePos()).descaled()
+  result = mouseGridCell(
+    mousePos, runtime.state.rows, runtime.state.cols, runtime.cellW, runtime.cellH
+  )
+
+proc sendMouseInput(runtime: GuiRuntime, button, action: string, row, col: int): bool =
+  if button.len == 0:
+    return false
+  let mods = mouseModifierFlags(runtime.window.buttonDown())
+  runtime.state.setPanelHighlight(row, col)
+  result = runtime.safeRequest(
+    "nvim_input_mouse", rpcPackParams(button, action, mods, 0, row, col)
+  )
+
+proc handleMouseButton(runtime: GuiRuntime, button: Button, action: string): bool =
+  let mouseButton = mouseButtonToNvimButton(button)
+  if mouseButton.len == 0:
+    return false
+  let cell = runtime.mouseCell()
+  discard runtime.sendMouseInput(mouseButton, action, cell.row, cell.col)
+  result = true
+
 proc tryResizeUi*(runtime: GuiRuntime) =
   let sz = runtime.window.logicalSize()
   let newSz = computeGridSize(sz, runtime.cellW, runtime.cellH)
@@ -261,6 +284,21 @@ proc initGuiRuntime*(
     runtime.tryResizeUi()
     runtime.state.needsRedraw = true
 
+  runtime.window.onMouseMove = proc() =
+    let dragButton = mouseDragButtonToNvimButton(runtime.window.buttonDown())
+    if dragButton.len == 0:
+      return
+    let cell = runtime.mouseCell()
+    discard runtime.sendMouseInput(dragButton, "drag", cell.row, cell.col)
+
+  runtime.window.onScroll = proc() =
+    let actions = mouseScrollActions(runtime.window.scrollDelta())
+    if actions.len == 0:
+      return
+    let cell = runtime.mouseCell()
+    for action in actions:
+      discard runtime.sendMouseInput("wheel", action, cell.row, cell.col)
+
   runtime.window.onRune = proc(r: Rune) =
     let buttons = runtime.window.buttonDown()
     if buttons[KeyLeftControl] or buttons[KeyRightControl]:
@@ -269,6 +307,8 @@ proc initGuiRuntime*(
     discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.onButtonPress = proc(button: Button) =
+    if runtime.handleMouseButton(button, "press"):
+      return
     if button == KeyEnter and runtime.state.cmdlineActive:
       runtime.state.cmdlineCommitPending = true
     if button == KeyEscape:
@@ -279,6 +319,9 @@ proc initGuiRuntime*(
     let input = keyToNvimInput(button, ctrlDown)
     if input.len > 0:
       discard runtime.safeRequest("nvim_input", rpcPackParams(input))
+
+  runtime.window.onButtonRelease = proc(button: Button) =
+    discard runtime.handleMouseButton(button, "release")
 
 proc runWindyFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): bool =
   let runtime = initGuiRuntime(config, testCfg)

@@ -33,6 +33,8 @@ type
     wildmenuText*: string
     wildmenuSelected*: int
     wildmenuItems*: seq[string]
+    panelHighlightRow*: int
+    panelHighlightCol*: int
 
   HlAttr* = object
     fg*: Option[Color]
@@ -66,6 +68,8 @@ proc initLineGridState*(rows, cols: int): LineGridState =
   result.wildmenuText = ""
   result.wildmenuSelected = -1
   result.wildmenuItems = @[]
+  result.panelHighlightRow = -1
+  result.panelHighlightCol = -1
 
 proc cellIndex*(s: LineGridState, row, col: int): int =
   row * s.cols + col
@@ -89,6 +93,11 @@ proc clear*(s: var LineGridState) =
   for i in 0 ..< s.cells.len:
     s.cells[i].text = " "
     s.cells[i].hlId = 0
+  s.needsRedraw = true
+
+proc setPanelHighlight*(s: var LineGridState, row, col: int) =
+  s.panelHighlightRow = row
+  s.panelHighlightCol = col
   s.needsRedraw = true
 
 proc resize*(s: var LineGridState, rows, cols: int) =

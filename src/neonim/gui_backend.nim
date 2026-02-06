@@ -14,6 +14,10 @@ when not UseMetalBackend:
 
 import ./[ui_linegrid]
 
+const
+  MouseScrollUnit = 10'f32
+  PanelHighlightFill* = rgba(248, 210, 120, 36).color
+
 proc monoMetrics*(font: FigFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
   let lineH =
@@ -74,6 +78,58 @@ proc keyToNvimInput*(button: Button, ctrlDown: bool): string =
   of KeyPageUp: "<PageUp>"
   of KeyPageDown: "<PageDown>"
   else: ""
+
+proc mouseButtonToNvimButton*(button: Button): string =
+  case button
+  of MouseLeft: "left"
+  of MouseRight: "right"
+  of MouseMiddle: "middle"
+  of MouseButton4: "x1"
+  of MouseButton5: "x2"
+  else: ""
+
+proc mouseDragButtonToNvimButton*(buttons: ButtonView): string =
+  if buttons[MouseLeft]:
+    return "left"
+  if buttons[MouseRight]:
+    return "right"
+  if buttons[MouseMiddle]:
+    return "middle"
+  if buttons[MouseButton4]:
+    return "x1"
+  if buttons[MouseButton5]:
+    return "x2"
+  ""
+
+proc mouseModifierFlags*(buttons: ButtonView): string =
+  if buttons[KeyLeftControl] or buttons[KeyRightControl]:
+    result.add "C"
+  if buttons[KeyLeftShift] or buttons[KeyRightShift]:
+    result.add "S"
+  if buttons[KeyLeftAlt] or buttons[KeyRightAlt]:
+    result.add "A"
+  if buttons[KeyLeftSuper] or buttons[KeyRightSuper]:
+    result.add "D"
+
+proc mouseGridCell*(
+    mousePos: Vec2, rows, cols: int, cellW, cellH: float32
+): tuple[row, col: int] =
+  if rows <= 0 or cols <= 0 or cellW <= 0 or cellH <= 0:
+    return (0, 0)
+  let rawCol = int(mousePos.x / cellW)
+  let rawRow = int(mousePos.y / (2 * cellH))
+  result.col = min(cols - 1, max(0, rawCol))
+  result.row = min(rows - 1, max(0, rawRow))
+
+proc mouseScrollActions*(delta: Vec2): seq[string] =
+  let x = delta.x
+  let y = delta.y
+  let ySteps = max(0, int(abs(y) / MouseScrollUnit + 0.999'f32))
+  let xSteps = max(0, int(abs(x) / MouseScrollUnit + 0.999'f32))
+  for _ in 0 ..< ySteps:
+    result.add(if y > 0: "up" else: "down")
+  for _ in 0 ..< xSteps:
+    result.add(if x > 0: "left" else: "right")
 
 proc buildOverlayLayout(
     monoFont: FigFont,
@@ -240,6 +296,19 @@ proc makeRenderTree*(
         screenBox: rect(0, y, w, cellH),
         fill: state.colors.fg,
         textLayout: layout,
+      ),
+    )
+
+  if state.panelHighlightRow >= 0 and state.panelHighlightRow < state.rows:
+    let py = state.panelHighlightRow.float32 * 2 * cellH
+    discard renders.addRoot(
+      overlayZ,
+      Fig(
+        kind: nkRectangle,
+        childCount: 0,
+        zlevel: overlayZ,
+        screenBox: rect(0, py, w, 2 * cellH),
+        fill: PanelHighlightFill,
       ),
     )
 
