@@ -37,8 +37,14 @@ suite "gui backend renders":
     var foundColon = false
     var colonY = 0.0'f32
     var colonColorOk = false
+    var foundCmdlineBg = false
     if 1.ZLevel in renders.layers:
       for node in renders.layers[1.ZLevel].nodes:
+        if node.kind == nkRectangle and node.fill == state.colors.bg:
+          let expectedBgY = 2 * cellH * (rows - 1).float32
+          if abs(node.screenBox.y - expectedBgY) < 0.001'f32 and
+              abs(node.screenBox.h - (2 * cellH)) < 0.001'f32:
+            foundCmdlineBg = true
         if node.kind == nkText:
           for r in node.textLayout.runes:
             if r == Rune(':'):
@@ -52,6 +58,7 @@ suite "gui backend renders":
           break
     check foundColon
     check colonColorOk
+    check foundCmdlineBg
     let expectedY = cellH * (rows - 1).float32
     check abs(colonY - expectedY) < 0.001'f32
 
