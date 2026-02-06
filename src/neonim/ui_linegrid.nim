@@ -75,8 +75,7 @@ proc renderedCell*(s: LineGridState, row, col: int): Cell =
     if col >= 0 and col < s.cmdlineText.len:
       return Cell(text: $s.cmdlineText[col], hlId: 0)
     return Cell(text: " ", hlId: 0)
-  if (not s.cmdlineActive) and s.cmdlineCommittedText.len > 0 and
-      row == s.rows - 1:
+  if (not s.cmdlineActive) and s.cmdlineCommittedText.len > 0 and row == s.rows - 1:
     if col >= 0 and col < s.cmdlineCommittedText.len:
       return Cell(text: $s.cmdlineCommittedText[col], hlId: 0)
     return Cell(text: " ", hlId: 0)
@@ -180,16 +179,18 @@ proc applyGridLine(state: var LineGridState, hl: HlState, s: MsgStream) =
   discard unpackInt64(s) # grid
   let row = int(unpackInt64(s))
   var col = int(unpackInt64(s))
+  var currentHlId = int64(0)
+  if row >= 0 and row < state.rows and col > 0 and col <= state.cols:
+    currentHlId = state.cells[state.cellIndex(row, col - 1)].hlId
 
   let cellsLen = s.unpack_array()
   for _ in 0 ..< cellsLen:
     let cellLen = s.unpack_array()
     var text = unpackStringOrBin(s)
-    var hlId = int64(0)
     var repeatCount = int64(1)
 
     if cellLen >= 2:
-      hlId = unpackInt64(s)
+      currentHlId = unpackInt64(s)
     if cellLen >= 3:
       repeatCount = unpackInt64(s)
     for _ in 3 ..< cellLen:
@@ -199,7 +200,7 @@ proc applyGridLine(state: var LineGridState, hl: HlState, s: MsgStream) =
       if row >= 0 and row < state.rows and col >= 0 and col < state.cols:
         let i = state.cellIndex(row, col)
         state.cells[i].text = if text.len == 0: " " else: text
-        state.cells[i].hlId = hlId
+        state.cells[i].hlId = currentHlId
       col.inc
   for _ in 4 ..< itemLen:
     s.skip_msg()
@@ -380,10 +381,7 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
 
         let prefix = firstcText & promptText
         info "cmdline show",
-          prefix = prefix,
-          content = contentText,
-          pos = pos,
-          itemLen = itemLen
+          prefix = prefix, content = contentText, pos = pos, itemLen = itemLen
         if firstcText == ":" or (prefix.len > 0 and prefix[0] == ':'):
           info "cmdline entered", prefix = prefix, pos = pos
         state.cmdlinePos = pos

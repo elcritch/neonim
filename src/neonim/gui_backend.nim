@@ -7,6 +7,7 @@ import chroma
 import pkg/pixie/fonts
 
 import figdraw/[commons, fignodes, figrender, windyshim]
+import figdraw/common/fonttypes
 
 when not UseMetalBackend:
   import figdraw/utils/glutils
@@ -21,7 +22,7 @@ proc monoMetrics*(font: FigFont): tuple[advance: float32, lineHeight: float32] =
     else:
       px.defaultLineHeight()
   let adv = (px.typeface.getAdvance(Rune('M')) * px.scale)
-  (adv, lineH/2)
+  (adv, lineH / 2)
 
 proc ctrlKeyToNvimInput(button: Button): string =
   case button
@@ -75,7 +76,11 @@ proc keyToNvimInput*(button: Button, ctrlDown: bool): string =
   else: ""
 
 proc buildOverlayLayout(
-    monoFont: FigFont, state: LineGridState, text: string, x0, y0, cellW: float32
+    monoFont: FigFont,
+    state: LineGridState,
+    text: string,
+    fg: Color,
+    x0, y0, cellW: float32,
 ): GlyphArrangement =
   var glyphs: seq[(Rune, Vec2)]
   glyphs.setLen(state.cols)
@@ -86,7 +91,7 @@ proc buildOverlayLayout(
       r = Rune(text[col])
     glyphs[col] = (r, vec2(x, y0))
     x += cellW
-  placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
+  placeGlyphs(fs(monoFont, fg), glyphs, origin = GlyphTopLeft)
 
 proc resolveColors(
     state: LineGridState, hl: HlState, hlId: int64
@@ -133,7 +138,7 @@ proc addRowRun(
         kind: nkRectangle,
         childCount: 0,
         zlevel: baseZ,
-        screenBox: rect(x, 2*y, w, 2*cellH),
+        screenBox: rect(x, 2 * y, w, 2 * cellH),
         fill: bg.get(),
       ),
     )
@@ -146,7 +151,7 @@ proc addRowRun(
     # Positions are relative to the node origin; screenBox provides the run offset.
     glyphs[col - startCol] = (runeForCell(cell), vec2(gx, y))
     gx += cellW
-  let layout = placeGlyphs(monoFont, glyphs, origin = GlyphTopLeft)
+  let layout = placeGlyphs(fs(monoFont, fg), glyphs, origin = GlyphTopLeft)
   discard renders.addChild(
     baseZ,
     rootIdx,
@@ -161,8 +166,11 @@ proc addRowRun(
   )
 
 proc makeRenderTree*(
-    w, h: float32, monoFont: FigFont, state: LineGridState, hl: HlState,
-    cellW, cellH: float32
+    w, h: float32,
+    monoFont: FigFont,
+    state: LineGridState,
+    hl: HlState,
+    cellW, cellH: float32,
 ): Renders =
   var renders = Renders()
   let baseZ = 0.ZLevel
@@ -194,17 +202,7 @@ proc makeRenderTree*(
           break
         endCol.inc
       addRowRun(
-        renders,
-        baseZ,
-        rootIdx,
-        monoFont,
-        state,
-        row,
-        col,
-        endCol,
-        runFg,
-        runBg,
-        cellW,
+        renders, baseZ, rootIdx, monoFont, state, row, col, endCol, runFg, runBg, cellW,
         cellH,
       )
       col = endCol
@@ -212,8 +210,9 @@ proc makeRenderTree*(
   if state.wildmenuActive and state.rows >= 2:
     let row = state.rows - 2
     let y = row.float32 * cellH
-    let layout =
-      buildOverlayLayout(monoFont, state, state.wildmenuText, 0'f32, y, cellW)
+    let layout = buildOverlayLayout(
+      monoFont, state, state.wildmenuText, state.colors.fg, 0'f32, y, cellW
+    )
     discard renders.addRoot(
       overlayZ,
       Fig(
@@ -229,7 +228,9 @@ proc makeRenderTree*(
   if state.cmdlineActive:
     let row = state.rows - 1
     let y = row.float32 * cellH
-    let layout = buildOverlayLayout(monoFont, state, state.cmdlineText, 0'f32, y, cellW)
+    let layout = buildOverlayLayout(
+      monoFont, state, state.cmdlineText, state.colors.fg, 0'f32, y, cellW
+    )
     discard renders.addRoot(
       overlayZ,
       Fig(

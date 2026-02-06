@@ -74,6 +74,60 @@ suite "ui linegrid":
     check state.cells[state.cellIndex(0, 2)].hlId == 7
     check state.cells[state.cellIndex(0, 3)].text == "b"
 
+  test "grid_line reuses previous hlId when omitted":
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+    var state = initLineGridState(1, 4)
+
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "grid_line",
+          proc(s: var MsgStream) =
+            s.pack_array(4)
+            s.pack(0) # grid
+            s.pack(0) # row
+            s.pack(0) # col
+            s.pack_array(3)
+            s.pack_array(2)
+            s.pack("a")
+            s.pack(9) # hlId
+            s.pack_array(1)
+            s.pack("b")
+            s.pack_array(1)
+            s.pack("c"),
+        )
+    )
+    handleRedraw(state, hl, params)
+
+    check state.cells[state.cellIndex(0, 0)].hlId == 9
+    check state.cells[state.cellIndex(0, 1)].hlId == 9
+    check state.cells[state.cellIndex(0, 2)].hlId == 9
+
+  test "grid_line at nonzero col inherits existing left hlId":
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+    var state = initLineGridState(1, 4)
+    state.cells[state.cellIndex(0, 0)].hlId = 6
+
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "grid_line",
+          proc(s: var MsgStream) =
+            s.pack_array(4)
+            s.pack(0) # grid
+            s.pack(0) # row
+            s.pack(1) # col
+            s.pack_array(1)
+            s.pack_array(1)
+            s.pack("x"),
+        )
+    )
+    handleRedraw(state, hl, params)
+
+    check state.cells[state.cellIndex(0, 1)].hlId == 6
+
   test "grid_line treats empty text as space":
     var hl = HlState(attrs: initTable[int64, HlAttr]())
     var state = initLineGridState(1, 2)

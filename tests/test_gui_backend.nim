@@ -14,7 +14,7 @@ suite "gui backend renders":
     setFigDataDir(dataDir)
 
     let fontId = loadTypeface("HackNerdFont-Regular.ttf")
-    let monoFont = UiFont(typefaceId: fontId, size: 16.0'f32)
+    let monoFont = FigFont(typefaceId: fontId, size: 16.0'f32)
     let (cellW, cellH) = monoMetrics(monoFont)
 
     let cols = 20
@@ -30,6 +30,7 @@ suite "gui backend renders":
 
     var foundColon = false
     var colonY = 0.0'f32
+    var colonColorOk = false
     if 1.ZLevel in renders.layers:
       for node in renders.layers[1.ZLevel].nodes:
         if node.kind == nkText:
@@ -37,9 +38,13 @@ suite "gui backend renders":
             if r == Rune(':'):
               foundColon = true
               colonY = node.screenBox.y
+              colonColorOk =
+                node.textLayout.spanColors.len == 1 and
+                node.textLayout.spanColors[0] == state.colors.fg
               break
         if foundColon:
           break
     check foundColon
+    check colonColorOk
     let expectedY = cellH * (rows - 1).float32
     check abs(colonY - expectedY) < 0.001'f32
