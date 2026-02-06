@@ -20,7 +20,7 @@ type GuiRuntime* = ref object
   window*: Window
   renderer*: FigRenderer
   client*: NeovimClient
-  monoFont*: UiFont
+  monoFont*: FigFont
   cellW*: float32
   cellH*: float32
   state*: LineGridState
@@ -207,7 +207,7 @@ proc initGuiRuntime*(
   let size = ivec2(1000, 700)
   let title = "Neonim"
   let typefaceId = loadTypeface(config.fontTypeface)
-  result.monoFont = UiFont(typefaceId: typefaceId, size: config.fontSize)
+  result.monoFont = FigFont(typefaceId: typefaceId, size: config.fontSize)
   result.window = newWindyWindow(size = size, fullscreen = false, title = title)
   result.window.runeInputEnabled = true
 

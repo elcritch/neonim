@@ -13,7 +13,7 @@ when not UseMetalBackend:
 
 import ./[ui_linegrid]
 
-proc monoMetrics*(font: UiFont): tuple[advance: float32, lineHeight: float32] =
+proc monoMetrics*(font: FigFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
   let lineH =
     if px.lineHeight >= 0:
@@ -75,7 +75,7 @@ proc keyToNvimInput*(button: Button, ctrlDown: bool): string =
   else: ""
 
 proc buildOverlayLayout(
-    monoFont: UiFont, state: LineGridState, text: string, x0, y0, cellW: float32
+    monoFont: FigFont, state: LineGridState, text: string, x0, y0, cellW: float32
 ): GlyphArrangement =
   var glyphs: seq[(Rune, Vec2)]
   glyphs.setLen(state.cols)
@@ -114,7 +114,7 @@ proc addRowRun(
     renders: var Renders,
     baseZ: ZLevel,
     rootIdx: FigIdx,
-    monoFont: UiFont,
+    monoFont: FigFont,
     state: LineGridState,
     row: int,
     startCol, endCol: int,
@@ -161,7 +161,7 @@ proc addRowRun(
   )
 
 proc makeRenderTree*(
-    w, h: float32, monoFont: UiFont, state: LineGridState, hl: HlState,
+    w, h: float32, monoFont: FigFont, state: LineGridState, hl: HlState,
     cellW, cellH: float32
 ): Renders =
   var renders = Renders()
