@@ -140,6 +140,14 @@ suite "ui linegrid":
     check state.panelHighlightCol == -1
     check state.needsRedraw
 
+  test "committed cmdline can be cleared":
+    var state = initLineGridState(2, 10)
+    state.cmdlineCommittedText = ":write"
+    state.needsRedraw = false
+    state.clearCommittedCmdline()
+    check state.cmdlineCommittedText.len == 0
+    check state.needsRedraw
+
   test "grid_line treats empty text as space":
     var hl = HlState(attrs: initTable[int64, HlAttr]())
     var state = initLineGridState(1, 2)

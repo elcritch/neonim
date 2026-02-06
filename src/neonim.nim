@@ -322,12 +322,14 @@ proc initGuiRuntime*(
     if buttons[KeyLeftControl] or buttons[KeyRightControl]:
       return
     runtime.state.clearPanelHighlight()
+    runtime.state.clearCommittedCmdline()
     let s = $r
     discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.onButtonPress = proc(button: Button) =
     if runtime.handleMouseButton(button, "press"):
       return
+    runtime.state.clearCommittedCmdline()
     let buttons = runtime.window.buttonDown()
     let uiDelta = uiScaleDeltaForShortcut(button, buttons)
     if uiDelta != 0.0'f32:

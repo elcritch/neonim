@@ -107,6 +107,12 @@ proc clearPanelHighlight*(s: var LineGridState) =
   s.panelHighlightCol = -1
   s.needsRedraw = true
 
+proc clearCommittedCmdline*(s: var LineGridState) =
+  if s.cmdlineCommittedText.len == 0:
+    return
+  s.cmdlineCommittedText = ""
+  s.needsRedraw = true
+
 proc resize*(s: var LineGridState, rows, cols: int) =
   if rows == s.rows and cols == s.cols:
     return

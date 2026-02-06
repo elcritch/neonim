@@ -281,6 +281,16 @@ proc makeRenderTree*(
   if state.wildmenuActive and state.rows >= 2:
     let row = state.rows - 2
     let y = row.float32 * cellH
+    discard renders.addRoot(
+      overlayZ,
+      Fig(
+        kind: nkRectangle,
+        childCount: 0,
+        zlevel: overlayZ,
+        screenBox: rect(0, 2 * y, w, 2 * cellH),
+        fill: state.colors.bg,
+      ),
+    )
     let layout = buildOverlayLayout(
       monoFont, state, state.wildmenuText, state.colors.fg, 0'f32, y, cellW
     )
@@ -299,6 +309,16 @@ proc makeRenderTree*(
   if state.cmdlineActive:
     let row = state.rows - 1
     let y = row.float32 * cellH
+    discard renders.addRoot(
+      overlayZ,
+      Fig(
+        kind: nkRectangle,
+        childCount: 0,
+        zlevel: overlayZ,
+        screenBox: rect(0, 2 * y, w, 2 * cellH),
+        fill: state.colors.bg,
+      ),
+    )
     let layout = buildOverlayLayout(
       monoFont, state, state.cmdlineText, state.colors.fg, 0'f32, y, cellW
     )
