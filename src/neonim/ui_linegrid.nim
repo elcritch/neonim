@@ -100,6 +100,13 @@ proc setPanelHighlight*(s: var LineGridState, row, col: int) =
   s.panelHighlightCol = col
   s.needsRedraw = true
 
+proc clearPanelHighlight*(s: var LineGridState) =
+  if s.panelHighlightRow == -1 and s.panelHighlightCol == -1:
+    return
+  s.panelHighlightRow = -1
+  s.panelHighlightCol = -1
+  s.needsRedraw = true
+
 proc resize*(s: var LineGridState, rows, cols: int) =
   if rows == s.rows and cols == s.cols:
     return

@@ -150,6 +150,8 @@ proc safeRequest(
     runtime.appRunning = false
     return false
 
+proc tryResizeUi*(runtime: GuiRuntime)
+
 proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
   let mousePos = vec2(runtime.window.mousePos()).descaled()
   result = mouseGridCell(
@@ -171,6 +173,22 @@ proc handleMouseButton(runtime: GuiRuntime, button: Button, action: string): boo
     return false
   let cell = runtime.mouseCell()
   discard runtime.sendMouseInput(mouseButton, action, cell.row, cell.col)
+  result = true
+
+proc adjustUiScale(runtime: GuiRuntime, delta: float32): bool =
+  if delta == 0.0'f32:
+    return false
+  let current = figUiScale()
+  let next = min(UiScaleMax, max(UiScaleMin, current + delta))
+  if abs(next - current) < 0.0001'f32:
+    return false
+  setFigUiScale(next)
+  let (cellW, cellH) = monoMetrics(runtime.monoFont)
+  runtime.cellW = cellW
+  runtime.cellH = cellH
+  runtime.tryResizeUi()
+  runtime.state.needsRedraw = true
+  info "ui scale", previous = current, current = next, cellW = cellW, cellH = cellH
   result = true
 
 proc tryResizeUi*(runtime: GuiRuntime) =
@@ -303,18 +321,25 @@ proc initGuiRuntime*(
     let buttons = runtime.window.buttonDown()
     if buttons[KeyLeftControl] or buttons[KeyRightControl]:
       return
+    runtime.state.clearPanelHighlight()
     let s = $r
     discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.onButtonPress = proc(button: Button) =
     if runtime.handleMouseButton(button, "press"):
       return
+    let buttons = runtime.window.buttonDown()
+    let uiDelta = uiScaleDeltaForShortcut(button, buttons)
+    if uiDelta != 0.0'f32:
+      runtime.state.clearPanelHighlight()
+      discard runtime.adjustUiScale(uiDelta)
+      return
+    runtime.state.clearPanelHighlight()
     if button == KeyEnter and runtime.state.cmdlineActive:
       runtime.state.cmdlineCommitPending = true
     if button == KeyEscape:
       runtime.state.cmdlineCommitPending = false
       runtime.state.cmdlineCommittedText = ""
-    let buttons = runtime.window.buttonDown()
     let ctrlDown = buttons[KeyLeftControl] or buttons[KeyRightControl]
     let input = keyToNvimInput(button, ctrlDown)
     if input.len > 0:

@@ -17,6 +17,9 @@ import ./[ui_linegrid]
 const
   MouseScrollUnit = 10'f32
   PanelHighlightFill* = rgba(248, 210, 120, 36).color
+  UiScaleStep* = 0.05'f32
+  UiScaleMin* = 0.5'f32
+  UiScaleMax* = 4.0'f32
 
 proc monoMetrics*(font: FigFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
@@ -130,6 +133,18 @@ proc mouseScrollActions*(delta: Vec2): seq[string] =
     result.add(if y > 0: "up" else: "down")
   for _ in 0 ..< xSteps:
     result.add(if x > 0: "left" else: "right")
+
+proc uiScaleDeltaForShortcut*(button: Button, buttons: ButtonView): float32 =
+  let superDown = buttons[KeyLeftSuper] or buttons[KeyRightSuper]
+  if not superDown:
+    return 0.0'f32
+  case button
+  of KeyEqual, NumpadAdd:
+    UiScaleStep
+  of KeyMinus, NumpadSubtract:
+    -UiScaleStep
+  else:
+    0.0'f32
 
 proc buildOverlayLayout(
     monoFont: FigFont,

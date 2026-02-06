@@ -128,6 +128,18 @@ suite "ui linegrid":
 
     check state.cells[state.cellIndex(0, 1)].hlId == 6
 
+  test "panel highlight can be cleared":
+    var state = initLineGridState(2, 2)
+    state.needsRedraw = false
+    state.setPanelHighlight(1, 1)
+    check state.panelHighlightRow == 1
+    check state.panelHighlightCol == 1
+    state.needsRedraw = false
+    state.clearPanelHighlight()
+    check state.panelHighlightRow == -1
+    check state.panelHighlightCol == -1
+    check state.needsRedraw
+
   test "grid_line treats empty text as space":
     var hl = HlState(attrs: initTable[int64, HlAttr]())
     var state = initLineGridState(1, 2)
