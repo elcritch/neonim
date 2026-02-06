@@ -257,8 +257,4 @@ proc makeRenderTree*(
       ),
     )
 
-  renders.layers.sort(
-    proc(x, y: auto): int =
-      cmp(x[0], y[0])
-  )
   result = renders
