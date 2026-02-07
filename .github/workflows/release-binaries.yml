@@ -190,6 +190,9 @@ jobs:
               libXi \
               libXxf86vm \
               mesa-libs
+            export PATH="/usr/local/nim/bin:/usr/local/bin:$PATH"
+            command -v nim
+            command -v nimble
             nim -v
             nimble install -y 'https://github.com/nim-lang/atlas@#head'
             atlas install --feature:windy --feature:sdl2
