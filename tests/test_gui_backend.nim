@@ -94,6 +94,9 @@ suite "gui backend renders":
     check uiScaleDeltaForShortcut(KeyEqual, ButtonView({})) == 0.0'f32
     check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftShift})) == 0.0'f32
     check uiScaleDeltaForShortcut(KeyMinus, ButtonView({})) == 0.0'f32
+    check keyToNvimInput(KeyLeft, ctrlDown = false, altDown = true) == "<A-Left>"
+    check keyToNvimInput(KeyEnter, ctrlDown = false, altDown = true) == "<A-CR>"
+    check keyToNvimInput(KeyB, ctrlDown = true, altDown = true) == "<A-C-b>"
 
     let monoFont = testMonoFont()
     let (cellW, cellH) = monoMetrics(monoFont)

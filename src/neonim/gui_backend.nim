@@ -61,26 +61,41 @@ proc ctrlKeyToNvimInput(button: Button): string =
   of KeyZ: "<C-z>"
   else: ""
 
-proc keyToNvimInput*(button: Button, ctrlDown: bool): string =
+proc withAltModifier(input: string): string =
+  if input.len == 0:
+    return ""
+  if input.len >= 2 and input[0] == '<' and input[^1] == '>':
+    return "<A-" & input[1 .. ^2] & ">"
+  "<A-" & input & ">"
+
+proc keyToNvimInput*(button: Button, ctrlDown: bool, altDown = false): string =
   if ctrlDown:
     let ctrlInput = ctrlKeyToNvimInput(button)
     if ctrlInput.len > 0:
-      return ctrlInput
-  case button
-  of KeyEnter: "<CR>"
-  of KeyBackspace: "<BS>"
-  of KeyTab: "<Tab>"
-  of KeyEscape: "<Esc>"
-  of KeyUp: "<Up>"
-  of KeyDown: "<Down>"
-  of KeyLeft: "<Left>"
-  of KeyRight: "<Right>"
-  of KeyDelete: "<Del>"
-  of KeyHome: "<Home>"
-  of KeyEnd: "<End>"
-  of KeyPageUp: "<PageUp>"
-  of KeyPageDown: "<PageDown>"
-  else: ""
+      return
+        if altDown:
+          withAltModifier(ctrlInput)
+        else:
+          ctrlInput
+  let input =
+    case button
+    of KeyEnter: "<CR>"
+    of KeyBackspace: "<BS>"
+    of KeyTab: "<Tab>"
+    of KeyEscape: "<Esc>"
+    of KeyUp: "<Up>"
+    of KeyDown: "<Down>"
+    of KeyLeft: "<Left>"
+    of KeyRight: "<Right>"
+    of KeyDelete: "<Del>"
+    of KeyHome: "<Home>"
+    of KeyEnd: "<End>"
+    of KeyPageUp: "<PageUp>"
+    of KeyPageDown: "<PageDown>"
+    else: ""
+  if altDown:
+    return withAltModifier(input)
+  input
 
 proc mouseButtonToNvimButton*(button: Button): string =
   case button

@@ -456,10 +456,6 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
             s.skip_msg()
 
         let prefix = firstcText & promptText
-        info "cmdline show",
-          prefix = prefix, content = contentText, pos = pos, itemLen = itemLen
-        if firstcText == ":" or (prefix.len > 0 and prefix[0] == ':'):
-          info "cmdline entered", prefix = prefix, pos = pos
         state.cmdlinePos = pos
         state.cmdlineActive = true
         state.cmdlineCommitPending = false
@@ -481,7 +477,6 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
             s.skip_msg()
           for _ in 1 ..< itemLen:
             s.skip_msg()
-          info "cmdline pos", pos = state.cmdlinePos
           state.updateCmdlineRow()
         else:
           for _ in 0 ..< itemLen:
@@ -489,7 +484,6 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
     of "cmdline_hide":
       for _ in 1 ..< evLen:
         s.skip_msg()
-      info "cmdline hide"
       if state.cmdlineCommitPending:
         state.cmdlineCommittedText = state.cmdlineText
       else:
