@@ -37,6 +37,9 @@ bin/neonim .
 # Open a specific folder
 bin/neonim ~/code/my-project
 
+# Set FONT or HDI
+HDI=1.8 FONT="JetBrainsMonoNLNerdFont-Thin.ttf" bin/neonim ~/code/my-project
+
 # Forward nvim args directly
 bin/neonim -u NONE --noplugin +':set number' ~/code/my-project
 ```
