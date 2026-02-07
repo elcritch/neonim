@@ -200,7 +200,7 @@ jobs:
             nim -v
             mkdir -p deps
             git clone 'https://github.com/nim-lang/atlas' deps/atlas
-            nim c deps/atlas/src/atlas -o:./atlas
+            nim c -o:./atlas deps/atlas/src/atlas.nim 
             ./atlas install
             nim build
             mkdir -p dist
