@@ -1,9 +1,9 @@
 --nimcache:".nimcache/"
 
-import std/[algorithm, sequtils, strutils]
+import std/[algorithm, sequtils, strutils, os]
 
 task build, "build neonim":
-  exec("nim c $NIMFLAGS -o:bin/neonim src/neonim")
+  exec("nim c " & getEnv("NIMFLAGS") & " -o:bin/neonim src/neonim.nim")
 
 task test, "run unit test":
   for testFile in listFiles("tests/"):
