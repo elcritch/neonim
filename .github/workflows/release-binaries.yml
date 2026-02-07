@@ -148,6 +148,8 @@ jobs:
 
       - name: Build neonim
         shell: pwsh
+        env:
+          NIMFLAGS: "-d:figdraw.opengl"
         run: |
           nim build
 
@@ -191,8 +193,7 @@ jobs:
               libXxf86vm \
               mesa-libs
             export PATH="/usr/local/nim/bin:/usr/local/bin:$PATH"
-            command -v nim
-            command -v nimble
+            export PATH="~/.nimble/bin/:/usr/local/bin:$PATH"
             nim -v
             nimble install -y 'https://github.com/nim-lang/atlas@#master'
             atlas install --feature:windy --feature:sdl2
