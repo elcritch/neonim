@@ -1,4 +1,4 @@
-<img width="512" height="512" alt="neonim-icon-capybara2" src="https://github.com/user-attachments/assets/e0246f52-1651-4c27-ba7b-e33c36c423e9" />
+<img width="256" height="256" alt="neonim-icon-capybara2" src="https://github.com/user-attachments/assets/e0246f52-1651-4c27-ba7b-e33c36c423e9" />
 
 # neonim
 
