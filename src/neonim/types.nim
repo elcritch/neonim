@@ -6,6 +6,7 @@ type GuiConfig* = object
   windowTitle*: string
 
   fontTypeface*: string
+  defaultTypeface*: string
   fontSize*: float32
 
 type GuiTestConfig* = object

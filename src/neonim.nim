@@ -340,9 +340,9 @@ proc shutdownGui*(runtime: GuiRuntime) =
 proc initGuiRuntime*(
     config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig()
 ): GuiRuntime =
-  let dataDir = resolveDataDir(config.fontTypeface)
-  when not defined(emscripten):
-    setFigDataDir(dataDir)
+  #let dataDir = resolveDataDir(config.fontTypeface)
+  #when not defined(emscripten):
+    #setFigDataDir(dataDir)
 
   new(result)
   result.config = config
@@ -353,7 +353,7 @@ proc initGuiRuntime*(
   result.figNodesDumpPath = getEnv("NEONIM_FIG_NODES_OUT")
   let size = ivec2(1000, 700)
   let title = "Neonim"
-  let typefaceId = loadTypeface(config.fontTypeface)
+  let typefaceId = loadTypeface(config.fontTypeface, [config.defaultTypeface])
   result.monoFont = FigFont(typefaceId: typefaceId, size: config.fontSize)
   result.window = newWindyWindow(size = size, fullscreen = false, title = title)
   trySetWindowIcon(result.window)
@@ -481,11 +481,14 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
   discard runWindyFigdrawGuiWithTest(config, GuiTestConfig())
 
 proc guiConfigFromCli*(args: seq[string]): GuiConfig =
+  registerStaticTypeface("HackNerdFont-Regular.ttf", ".." / "data" / "HackNerdFont-Regular.ttf")
+
   result = GuiConfig(
     nvimCmd: "nvim",
     nvimArgs: args,
     windowTitle: "neonim (windy + figdraw)",
-    fontTypeface: "HackNerdFont-Regular.ttf",
+    fontTypeface: getEnv("FONT", "HackNerdFont-Regular.ttf"),
+    defaultTypeface: "HackNerdFont-Regular.ttf",
     fontSize: 16.0'f32,
   )
 
