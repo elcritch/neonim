@@ -18,7 +18,7 @@ type GuiRuntime* = ref object
   testPassed*: bool
   figNodesDumpPath*: string
   window*: Window
-  renderer*: FigRenderer
+  renderer*: FigRenderer[WindyRenderBackend]
   client*: NeovimClient
   monoFont*: FigFont
   cellW*: float32
@@ -259,7 +259,10 @@ proc initGuiRuntime*(
   if size != size.scaled():
     result.window.size = size.scaled()
 
-  result.renderer = newFigRenderer(atlasSize = 2048)
+  result.renderer = newFigRenderer(
+    atlasSize = 4096,
+    backendState = WindyRenderBackend()
+  )
   when UseMetalBackend:
     result.metalHandle =
       attachMetalLayer(result.window, result.renderer.ctx.metalDevice())
