@@ -213,6 +213,57 @@ proc trySetWindowIcon(window: Window) =
   except CatchableError as err:
     warn "failed to set window icon", path = iconPath, error = err.msg
 
+when defined(macosx):
+  type
+    CGEventRef = pointer
+    CGEventFlags = uint64
+
+  proc CGEventCreate(
+    source: pointer
+  ): CGEventRef {.importc, header: "<CoreGraphics/CoreGraphics.h>".}
+
+  proc CGEventGetFlags(
+    event: CGEventRef
+  ): CGEventFlags {.importc, header: "<CoreGraphics/CoreGraphics.h>".}
+
+  proc CFRelease(cf: pointer) {.importc, header: "<CoreFoundation/CoreFoundation.h>".}
+
+const
+  CgShiftMask = 0x00020000'u64
+  CgCtrlMask = 0x00040000'u64
+  CgAltMask = 0x00080000'u64
+  CgCmdMask = 0x00100000'u64
+
+proc currentModifierState(
+    window: Window
+): tuple[ctrlDown, shiftDown, altDown, cmdDown: bool] =
+  let buttons = window.buttonDown()
+  result = (
+    ctrlDown: buttons[KeyLeftControl] or buttons[KeyRightControl],
+    shiftDown: buttons[KeyLeftShift] or buttons[KeyRightShift],
+    altDown: buttons[KeyLeftAlt] or buttons[KeyRightAlt],
+    cmdDown: buttons[KeyLeftSuper] or buttons[KeyRightSuper],
+  )
+  when defined(macosx):
+    let ev = CGEventCreate(nil)
+    if ev != nil:
+      let flags = CGEventGetFlags(ev)
+      CFRelease(ev)
+      result.ctrlDown = (flags and CgCtrlMask) != 0
+      result.shiftDown = (flags and CgShiftMask) != 0
+      result.altDown = (flags and CgAltMask) != 0
+      result.cmdDown = (flags and CgCmdMask) != 0
+
+proc mouseModifierFlagsFromState(ctrlDown, shiftDown, altDown, cmdDown: bool): string =
+  if ctrlDown:
+    result.add "C"
+  if shiftDown:
+    result.add "S"
+  if altDown:
+    result.add "A"
+  if cmdDown:
+    result.add "D"
+
 proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
   let mousePos = vec2(runtime.window.mousePos()).descaled()
   result = mouseGridCell(
@@ -222,7 +273,10 @@ proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
 proc sendMouseInput(runtime: GuiRuntime, button, action: string, row, col: int): bool =
   if button.len == 0:
     return false
-  let mods = mouseModifierFlags(runtime.window.buttonDown())
+  let modsState = currentModifierState(runtime.window)
+  let mods = mouseModifierFlagsFromState(
+    modsState.ctrlDown, modsState.shiftDown, modsState.altDown, modsState.cmdDown
+  )
   runtime.state.setPanelHighlight(row, col)
   result = runtime.safeRequest(
     "nvim_input_mouse", rpcPackParams(button, action, mods, 0, row, col)
@@ -388,10 +442,10 @@ proc initGuiRuntime*(
       discard runtime.sendMouseInput("wheel", action, cell.row, cell.col)
 
   runtime.window.onRune = proc(r: Rune) =
-    let buttons = runtime.window.buttonDown()
-    if buttons[KeyLeftControl] or buttons[KeyRightControl]:
+    let mods = currentModifierState(runtime.window)
+    if mods.ctrlDown:
       return
-    if buttons[KeyLeftAlt] or buttons[KeyRightAlt]:
+    if mods.altDown:
       return
     runtime.state.clearPanelHighlight()
     runtime.state.clearCommittedCmdline()
@@ -402,8 +456,13 @@ proc initGuiRuntime*(
     if runtime.handleMouseButton(button, "press"):
       return
     runtime.state.clearCommittedCmdline()
-    let buttons = runtime.window.buttonDown()
-    let uiDelta = uiScaleDeltaForShortcut(button, buttons)
+    let mods = currentModifierState(runtime.window)
+    var shortcutMods: set[Button] = {}
+    if mods.cmdDown:
+      shortcutMods.incl KeyLeftSuper
+    if mods.shiftDown:
+      shortcutMods.incl KeyLeftShift
+    let uiDelta = uiScaleDeltaForShortcut(button, ButtonView(shortcutMods))
     if uiDelta != 0.0'f32:
       runtime.state.clearPanelHighlight()
       discard runtime.adjustUiScale(uiDelta)
@@ -414,10 +473,7 @@ proc initGuiRuntime*(
     if button == KeyEscape:
       runtime.state.cmdlineCommitPending = false
       runtime.state.cmdlineCommittedText = ""
-    let ctrlDown = buttons[KeyLeftControl] or buttons[KeyRightControl]
-    let altDown = buttons[KeyLeftAlt] or buttons[KeyRightAlt]
-    let shiftDown = buttons[KeyLeftShift] or buttons[KeyRightShift]
-    let input = keyToNvimInput(button, ctrlDown, altDown, shiftDown)
+    let input = keyToNvimInput(button, mods.ctrlDown, mods.altDown, mods.shiftDown)
     if input.len > 0:
       discard runtime.safeRequest("nvim_input", rpcPackParams(input))
 
