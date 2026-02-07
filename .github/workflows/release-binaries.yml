@@ -195,8 +195,10 @@ jobs:
             export PATH="/usr/local/nim/bin:/usr/local/bin:$PATH"
             export PATH="~/.nimble/bin/:/usr/local/bin:$PATH"
             nim -v
-            nimble install -y 'https://github.com/nim-lang/atlas@#master'
-            atlas install
+            mkdir -p deps
+            git clone 'https://github.com/nim-lang/atlas#master' deps/atlas
+            (cd deps/atlas && nim build);
+            ./deps/atlas/bin/atlas install
             nim build
             mkdir -p dist
             tar -czf dist/neonim-freebsd-amd64.tar.gz -C bin neonim
