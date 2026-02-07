@@ -66,6 +66,9 @@ suite "gui backend renders":
     check mouseButtonToNvimButton(MouseLeft) == "left"
     check mouseButtonToNvimButton(MouseRight) == "right"
     check mouseButtonToNvimButton(KeyA) == ""
+    check multiClickToNvimInput(DoubleClick, row = 2, col = 7) == "<2-LeftMouse><7,2>"
+    check multiClickToNvimInput(TripleClick, row = 2, col = 7) == "<3-LeftMouse><7,2>"
+    check multiClickToNvimInput(MouseLeft, row = 2, col = 7) == ""
 
     check mouseDragButtonToNvimButton(ButtonView({MouseLeft})) == "left"
     check mouseDragButtonToNvimButton(ButtonView({MouseMiddle})) == "middle"

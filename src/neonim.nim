@@ -168,10 +168,16 @@ proc sendMouseInput(runtime: GuiRuntime, button, action: string, row, col: int):
   )
 
 proc handleMouseButton(runtime: GuiRuntime, button: Button, action: string): bool =
+  let cell = runtime.mouseCell()
+  if action == "press":
+    let multiInput = multiClickToNvimInput(button, cell.row, cell.col)
+    if multiInput.len > 0:
+      runtime.state.setPanelHighlight(cell.row, cell.col)
+      return runtime.safeRequest("nvim_input", rpcPackParams(multiInput))
+
   let mouseButton = mouseButtonToNvimButton(button)
   if mouseButton.len == 0:
     return false
-  let cell = runtime.mouseCell()
   discard runtime.sendMouseInput(mouseButton, action, cell.row, cell.col)
   result = true
 

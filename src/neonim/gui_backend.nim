@@ -151,6 +151,17 @@ proc mouseButtonToNvimButton*(button: Button): string =
   of MouseButton5: "x2"
   else: ""
 
+proc multiClickToNvimInput*(button: Button, row, col: int): string =
+  let clickCount =
+    case button
+    of DoubleClick: "2"
+    of TripleClick: "3"
+    of QuadrupleClick: "4"
+    else: ""
+  if clickCount.len == 0:
+    return ""
+  "<" & clickCount & "-LeftMouse><" & $col & "," & $row & ">"
+
 proc mouseDragButtonToNvimButton*(buttons: ButtonView): string =
   if buttons[MouseLeft]:
     return "left"
