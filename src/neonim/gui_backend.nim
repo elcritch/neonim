@@ -21,6 +21,12 @@ const
   UiScaleMin* = 0.5'f32
   UiScaleMax* = 4.0'f32
 
+type
+  CmdShortcutAction* = enum
+    csaNone,
+    csaCopy,
+    csaPaste
+
 proc monoMetrics*(font: FigFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
   let lineH =
@@ -209,16 +215,29 @@ proc uiScaleDeltaForShortcut*(button: Button, buttons: ButtonView): float32 =
   let cmdDown = buttons[KeyLeftSuper] or buttons[KeyRightSuper]
   if not cmdDown:
     return 0.0'f32
-  let shiftDown = buttons[KeyLeftShift] or buttons[KeyRightShift]
   case button
   of KeyEqual:
-    if shiftDown: UiScaleStep else: 0.0'f32
+    UiScaleStep
   of NumpadAdd:
     UiScaleStep
   of KeyMinus, NumpadSubtract:
     -UiScaleStep
   else:
     0.0'f32
+
+proc cmdShortcutAction*(button: Button): CmdShortcutAction =
+  case button
+  of KeyC:
+    csaCopy
+  of KeyV:
+    csaPaste
+  else:
+    csaNone
+
+proc isVisualLikeMode*(mode: string): bool =
+  if mode.len == 0:
+    return false
+  mode[0] in {'v', 'V', char(0x16), 's', 'S', char(0x13)}
 
 proc buildOverlayLayout(
     monoFont: FigFont,

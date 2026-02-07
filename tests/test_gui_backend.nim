@@ -90,6 +90,7 @@ suite "gui backend renders":
     check mouseScrollActions(vec2(-10, 0)) == @["right"]
     check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftSuper, KeyLeftShift})) ==
       UiScaleStep
+    check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftSuper})) == UiScaleStep
     check uiScaleDeltaForShortcut(KeyMinus, ButtonView({KeyRightSuper})) == -UiScaleStep
     check uiScaleDeltaForShortcut(NumpadAdd, ButtonView({KeyLeftSuper})) == UiScaleStep
     check uiScaleDeltaForShortcut(NumpadSubtract, ButtonView({KeyLeftSuper})) ==
@@ -102,6 +103,14 @@ suite "gui backend renders":
     check keyToNvimInput(KeyLeft, ctrlDown = false, altDown = true) == "<A-Left>"
     check keyToNvimInput(KeyEnter, ctrlDown = false, altDown = true) == "<A-CR>"
     check keyToNvimInput(KeyB, ctrlDown = true, altDown = true) == "<A-C-b>"
+    check cmdShortcutAction(KeyC) == csaCopy
+    check cmdShortcutAction(KeyV) == csaPaste
+    check cmdShortcutAction(KeyX) == csaNone
+    check isVisualLikeMode("v")
+    check isVisualLikeMode("V")
+    check isVisualLikeMode($char(0x16))
+    check not isVisualLikeMode("n")
+    check not isVisualLikeMode("")
 
     let monoFont = testMonoFont()
     let (cellW, cellH) = monoMetrics(monoFont)

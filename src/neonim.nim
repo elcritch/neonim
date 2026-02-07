@@ -160,6 +160,106 @@ proc safeRequest(
     runtime.appRunning = false
     return false
 
+proc rpcErrorText(buf: RpcParamsBuffer): string =
+  if buf.isNilValue:
+    return ""
+  try:
+    var text = ""
+    rpcUnpack(buf, text)
+    return text
+  except CatchableError:
+    return "<non-string rpc error>"
+
+proc unpackStringOrBin(s: MsgStream): string =
+  if s.is_string():
+    let len = s.unpack_string()
+    if len < 0:
+      return ""
+    return s.readExactStr(len)
+  if s.is_bin():
+    let len = s.unpack_bin()
+    return s.readExactStr(len)
+  ""
+
+proc currentNvimMode(runtime: GuiRuntime): string =
+  if not runtime.client.isRunning():
+    return ""
+  try:
+    let resp =
+      runtime.client.callAndWait("nvim_get_mode", rpcPackParams(), timeout = 0.75)
+    if not resp.error.isNilValue:
+      warn "nvim_get_mode failed", error = rpcErrorText(resp.error)
+      return ""
+    var s = MsgStream.init(resp.result.buf.data)
+    s.setPosition(0)
+    if not s.is_map():
+      return ""
+    let mapLen = s.unpack_map()
+    for _ in 0 ..< mapLen:
+      if not (s.is_string() or s.is_bin()):
+        s.skip_msg()
+        s.skip_msg()
+        continue
+      let key = unpackStringOrBin(s)
+      if key == "mode":
+        if s.is_string() or s.is_bin():
+          return unpackStringOrBin(s)
+        s.skip_msg()
+      else:
+        s.skip_msg()
+  except CatchableError as err:
+    warn "failed to read nvim mode", error = err.msg
+  ""
+
+proc copyVisualSelectionToClipboard(runtime: GuiRuntime): bool =
+  let mode = runtime.currentNvimMode()
+  if not isVisualLikeMode(mode):
+    return false
+  try:
+    let yankResp =
+      runtime.client.callAndWait("nvim_input", rpcPackParams("y"), timeout = 0.75)
+    if not yankResp.error.isNilValue:
+      warn "nvim yank failed", error = rpcErrorText(yankResp.error)
+      return false
+
+    let regResp = runtime.client.callAndWait(
+      "nvim_eval", rpcPackParams("getreg('\"')"), timeout = 0.75
+    )
+    if not regResp.error.isNilValue:
+      warn "nvim getreg failed", error = rpcErrorText(regResp.error)
+      return false
+
+    var copiedText = ""
+    rpcUnpack(regResp.result, copiedText)
+    setClipboardString(copiedText)
+    return true
+  except CatchableError as err:
+    warn "copy shortcut failed", error = err.msg
+    return false
+
+proc pasteClipboard(runtime: GuiRuntime): bool =
+  try:
+    let clipboardText = getClipboardString()
+    if clipboardText.len == 0:
+      return true
+    return runtime.safeRequest("nvim_paste", rpcPackParams(clipboardText, false, -1))
+  except CatchableError as err:
+    warn "paste shortcut failed", error = err.msg
+    return false
+
+proc handleCmdShortcut(runtime: GuiRuntime, button: Button): bool =
+  case cmdShortcutAction(button)
+  of csaCopy:
+    runtime.state.clearPanelHighlight()
+    discard runtime.copyVisualSelectionToClipboard()
+    true
+  of csaPaste:
+    runtime.state.clearPanelHighlight()
+    discard runtime.pasteClipboard()
+    true
+  of csaNone:
+    false
+
 proc tryResizeUi*(runtime: GuiRuntime)
 
 proc resolveDataDir(fontTypeface: string): string =
@@ -342,7 +442,7 @@ proc initGuiRuntime*(
 ): GuiRuntime =
   #let dataDir = resolveDataDir(config.fontTypeface)
   #when not defined(emscripten):
-    #setFigDataDir(dataDir)
+  #setFigDataDir(dataDir)
 
   new(result)
   result.config = config
@@ -433,6 +533,8 @@ proc initGuiRuntime*(
       return
     if mods.altDown:
       return
+    if mods.cmdDown:
+      return
     runtime.state.clearPanelHighlight()
     runtime.state.clearCommittedCmdline()
     let s = $r
@@ -453,6 +555,8 @@ proc initGuiRuntime*(
     if uiDelta != 0.0'f32:
       runtime.state.clearPanelHighlight()
       discard runtime.adjustUiScale(uiDelta)
+      return
+    if mods.cmdDown and runtime.handleCmdShortcut(button):
       return
     runtime.state.clearPanelHighlight()
     if button == KeyEnter and runtime.state.cmdlineActive:
@@ -481,7 +585,9 @@ proc runWindyFigdrawGui*(config: GuiConfig) =
   discard runWindyFigdrawGuiWithTest(config, GuiTestConfig())
 
 proc guiConfigFromCli*(args: seq[string]): GuiConfig =
-  registerStaticTypeface("HackNerdFont-Regular.ttf", ".." / "data" / "HackNerdFont-Regular.ttf")
+  registerStaticTypeface(
+    "HackNerdFont-Regular.ttf", ".." / "data" / "HackNerdFont-Regular.ttf"
+  )
 
   result = GuiConfig(
     nvimCmd: "nvim",
