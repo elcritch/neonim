@@ -216,7 +216,6 @@ jobs:
       - build-linux
       - build-macos
       - build-windows
-      - build-freebsd
     runs-on: ubuntu-24.04
     permissions:
       contents: write
