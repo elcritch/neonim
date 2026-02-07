@@ -174,7 +174,7 @@ jobs:
       - name: Build neonim on FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.2"
+          release: "15.0"
           usesh: true
           run: |
             set -eux
@@ -196,7 +196,7 @@ jobs:
             export PATH="~/.nimble/bin/:/usr/local/bin:$PATH"
             nim -v
             nimble install -y 'https://github.com/nim-lang/atlas@#master'
-            atlas install --feature:windy --feature:sdl2
+            atlas install
             nim build
             mkdir -p dist
             tar -czf dist/neonim-freebsd-amd64.tar.gz -C bin neonim
