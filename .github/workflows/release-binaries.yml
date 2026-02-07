@@ -1,6 +1,9 @@
 name: release-binaries
 
 on:
+  push:
+    branches:
+    - "main"
   release:
     types:
       - published
@@ -174,7 +177,7 @@ jobs:
       - name: Build neonim on FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "15.0"
+          release: "14.3"
           usesh: true
           run: |
             set -eux
