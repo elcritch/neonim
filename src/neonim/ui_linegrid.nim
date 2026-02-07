@@ -1,7 +1,6 @@
 import std/[options, streams, tables]
 import msgpack4nim
 import chroma
-import chronicles
 
 import ./rpc
 import ./nvim_client

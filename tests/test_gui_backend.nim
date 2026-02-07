@@ -94,6 +94,8 @@ suite "gui backend renders":
     check uiScaleDeltaForShortcut(KeyEqual, ButtonView({})) == 0.0'f32
     check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftShift})) == 0.0'f32
     check uiScaleDeltaForShortcut(KeyMinus, ButtonView({})) == 0.0'f32
+    check keyToNvimInput(KeyF, ctrlDown = false, altDown = true) == "<A-f>"
+    check keyToNvimInput(KeyB, ctrlDown = false, altDown = true) == "<A-b>"
     check keyToNvimInput(KeyLeft, ctrlDown = false, altDown = true) == "<A-Left>"
     check keyToNvimInput(KeyEnter, ctrlDown = false, altDown = true) == "<A-CR>"
     check keyToNvimInput(KeyB, ctrlDown = true, altDown = true) == "<A-C-b>"

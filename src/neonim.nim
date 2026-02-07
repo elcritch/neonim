@@ -322,13 +322,11 @@ proc initGuiRuntime*(
     let buttons = runtime.window.buttonDown()
     if buttons[KeyLeftControl] or buttons[KeyRightControl]:
       return
+    if buttons[KeyLeftAlt] or buttons[KeyRightAlt]:
+      return
     runtime.state.clearPanelHighlight()
     runtime.state.clearCommittedCmdline()
-    var s = $r
-    let altDown = buttons[KeyLeftAlt] or buttons[KeyRightAlt]
-    if altDown:
-      # Match terminal-style Meta behavior for text input.
-      s = "\x1b" & s
+    let s = $r
     discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.onButtonPress = proc(button: Button) =
@@ -349,7 +347,8 @@ proc initGuiRuntime*(
       runtime.state.cmdlineCommittedText = ""
     let ctrlDown = buttons[KeyLeftControl] or buttons[KeyRightControl]
     let altDown = buttons[KeyLeftAlt] or buttons[KeyRightAlt]
-    let input = keyToNvimInput(button, ctrlDown, altDown)
+    let shiftDown = buttons[KeyLeftShift] or buttons[KeyRightShift]
+    let input = keyToNvimInput(button, ctrlDown, altDown, shiftDown)
     if input.len > 0:
       discard runtime.safeRequest("nvim_input", rpcPackParams(input))
 

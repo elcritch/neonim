@@ -68,7 +68,47 @@ proc withAltModifier(input: string): string =
     return "<A-" & input[1 .. ^2] & ">"
   "<A-" & input & ">"
 
-proc keyToNvimInput*(button: Button, ctrlDown: bool, altDown = false): string =
+proc buttonToTextInput(button: Button, shiftDown: bool): string =
+  if button >= KeyA and button <= KeyZ:
+    let base =
+      if shiftDown:
+        ord('A')
+      else:
+        ord('a')
+    return $char(base + (ord(button) - ord(KeyA)))
+  if button >= Key0 and button <= Key9:
+    return $char(ord('0') + (ord(button) - ord(Key0)))
+  case button
+  of KeySpace:
+    return " "
+  of KeyBacktick:
+    return (if shiftDown: "~" else: "`")
+  of KeyMinus:
+    return (if shiftDown: "_" else: "-")
+  of KeyEqual:
+    return (if shiftDown: "+" else: "=")
+  of KeyLeftBracket:
+    return (if shiftDown: "{" else: "[")
+  of KeyRightBracket:
+    return (if shiftDown: "}" else: "]")
+  of KeyBackslash:
+    return (if shiftDown: "|" else: "\\")
+  of KeySemicolon:
+    return (if shiftDown: ":" else: ";")
+  of KeyApostrophe:
+    return (if shiftDown: "\"" else: "'")
+  of KeyComma:
+    return (if shiftDown: "<" else: ",")
+  of KeyPeriod:
+    return (if shiftDown: ">" else: ".")
+  of KeySlash:
+    return (if shiftDown: "?" else: "/")
+  else:
+    return ""
+
+proc keyToNvimInput*(
+    button: Button, ctrlDown: bool, altDown = false, shiftDown = false
+): string =
   if ctrlDown:
     let ctrlInput = ctrlKeyToNvimInput(button)
     if ctrlInput.len > 0:
@@ -94,7 +134,12 @@ proc keyToNvimInput*(button: Button, ctrlDown: bool, altDown = false): string =
     of KeyPageDown: "<PageDown>"
     else: ""
   if altDown:
-    return withAltModifier(input)
+    if input.len > 0:
+      return withAltModifier(input)
+    let textInput = buttonToTextInput(button, shiftDown)
+    if textInput.len > 0:
+      return withAltModifier(textInput)
+    return ""
   input
 
 proc mouseButtonToNvimButton*(button: Button): string =
