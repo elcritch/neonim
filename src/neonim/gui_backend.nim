@@ -135,11 +135,14 @@ proc mouseScrollActions*(delta: Vec2): seq[string] =
     result.add(if x > 0: "left" else: "right")
 
 proc uiScaleDeltaForShortcut*(button: Button, buttons: ButtonView): float32 =
-  let superDown = buttons[KeyLeftSuper] or buttons[KeyRightSuper]
-  if not superDown:
+  let cmdDown = buttons[KeyLeftSuper] or buttons[KeyRightSuper]
+  if not cmdDown:
     return 0.0'f32
+  let shiftDown = buttons[KeyLeftShift] or buttons[KeyRightShift]
   case button
-  of KeyEqual, NumpadAdd:
+  of KeyEqual:
+    if shiftDown: UiScaleStep else: 0.0'f32
+  of NumpadAdd:
     UiScaleStep
   of KeyMinus, NumpadSubtract:
     -UiScaleStep

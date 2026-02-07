@@ -259,10 +259,8 @@ proc initGuiRuntime*(
   if size != size.scaled():
     result.window.size = size.scaled()
 
-  result.renderer = newFigRenderer(
-    atlasSize = 4096,
-    backendState = WindyRenderBackend()
-  )
+  result.renderer =
+    newFigRenderer(atlasSize = 4096, backendState = WindyRenderBackend())
   when UseMetalBackend:
     result.metalHandle =
       attachMetalLayer(result.window, result.renderer.ctx.metalDevice())
@@ -365,13 +363,14 @@ proc runWindyFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): boo
 proc runWindyFigdrawGui*(config: GuiConfig) =
   discard runWindyFigdrawGuiWithTest(config, GuiTestConfig())
 
-when isMainModule:
-  runWindyFigdrawGui(
-    GuiConfig(
-      nvimCmd: "nvim",
-      nvimArgs: @[],
-      windowTitle: "neonim (windy + figdraw)",
-      fontTypeface: "HackNerdFont-Regular.ttf",
-      fontSize: 16.0'f32,
-    )
+proc guiConfigFromCli*(args: seq[string]): GuiConfig =
+  result = GuiConfig(
+    nvimCmd: "nvim",
+    nvimArgs: args,
+    windowTitle: "neonim (windy + figdraw)",
+    fontTypeface: "HackNerdFont-Regular.ttf",
+    fontSize: 16.0'f32,
   )
+
+when isMainModule:
+  runWindyFigdrawGui(guiConfigFromCli(commandLineParams()))

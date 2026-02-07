@@ -85,12 +85,15 @@ suite "gui backend renders":
     check mouseScrollActions(vec2(0, -10)) == @["down"]
     check mouseScrollActions(vec2(10, 0)) == @["left"]
     check mouseScrollActions(vec2(-10, 0)) == @["right"]
-    check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftSuper})) == UiScaleStep
+    check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftSuper, KeyLeftShift})) ==
+      UiScaleStep
     check uiScaleDeltaForShortcut(KeyMinus, ButtonView({KeyRightSuper})) == -UiScaleStep
     check uiScaleDeltaForShortcut(NumpadAdd, ButtonView({KeyLeftSuper})) == UiScaleStep
     check uiScaleDeltaForShortcut(NumpadSubtract, ButtonView({KeyLeftSuper})) ==
       -UiScaleStep
     check uiScaleDeltaForShortcut(KeyEqual, ButtonView({})) == 0.0'f32
+    check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftShift})) == 0.0'f32
+    check uiScaleDeltaForShortcut(KeyMinus, ButtonView({})) == 0.0'f32
 
     let monoFont = testMonoFont()
     let (cellW, cellH) = monoMetrics(monoFont)
