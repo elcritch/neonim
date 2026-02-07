@@ -5,9 +5,14 @@ import chronicles
 
 import vmath
 import msgpack4nim
+import pkg/pixie
+when defined(macosx):
+  import windy/platforms/macos/macdefs
 
 import figdraw/[commons, fignodes, figrender, windyshim]
 import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend]
+
+const EmbeddedWindowIconPng = staticRead("../data/neonim-icon-128.png")
 
 type GuiRuntime* = ref object
   config*: GuiConfig
@@ -152,6 +157,62 @@ proc safeRequest(
 
 proc tryResizeUi*(runtime: GuiRuntime)
 
+proc resolveDataDir(fontTypeface: string): string =
+  let appDir = getAppDir()
+  let candidates =
+    @[
+      normalizedPath(appDir / ".." / "data"),
+      normalizedPath(appDir / "data"),
+      normalizedPath(getCurrentDir() / "data"),
+    ]
+  for dir in candidates:
+    if fileExists(dir / fontTypeface):
+      return dir
+  result = candidates[0]
+
+proc sourceDataDir(): string =
+  normalizedPath(parentDir(currentSourcePath()) / ".." / "data")
+
+when defined(macosx):
+  objc:
+    proc setApplicationIconImage(self: NSApplication, x: NSImage)
+
+  proc trySetMacAppIcon(iconBytes: string, source = "embedded") =
+    try:
+      if iconBytes.len == 0:
+        warn "empty macOS app icon bytes", source = source
+        return
+      autoreleasepool:
+        let data =
+          NSData.dataWithBytes(cast[pointer](unsafeAddr iconBytes[0]), iconBytes.len)
+        let image = NSImage.alloc().initWithData(data)
+        if image.int == 0:
+          warn "failed to decode macOS app icon image", source = source
+          return
+        NSApp.setApplicationIconImage(image)
+    except CatchableError as err:
+      warn "failed to set macOS app icon", source = source, error = err.msg
+
+proc trySetWindowIcon(window: Window) =
+  try:
+    window.icon = pixie.decodeImage(EmbeddedWindowIconPng)
+    when defined(macosx):
+      trySetMacAppIcon(EmbeddedWindowIconPng)
+    return
+  except CatchableError as err:
+    warn "failed to set embedded window icon", error = err.msg
+
+  let iconPath = sourceDataDir() / "neonim-icon-128.png"
+  if not fileExists(iconPath):
+    warn "window icon not found", path = iconPath
+    return
+  try:
+    window.icon = pixie.readImage(iconPath)
+    when defined(macosx):
+      trySetMacAppIcon(readFile(iconPath), source = iconPath)
+  except CatchableError as err:
+    warn "failed to set window icon", path = iconPath, error = err.msg
+
 proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
   let mousePos = vec2(runtime.window.mousePos()).descaled()
   result = mouseGridCell(
@@ -242,8 +303,9 @@ proc shutdownGui*(runtime: GuiRuntime) =
 proc initGuiRuntime*(
     config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig()
 ): GuiRuntime =
+  let dataDir = resolveDataDir(config.fontTypeface)
   when not defined(emscripten):
-    setFigDataDir(getCurrentDir() / "data")
+    setFigDataDir(dataDir)
 
   new(result)
   result.config = config
@@ -256,6 +318,7 @@ proc initGuiRuntime*(
   let typefaceId = loadTypeface(config.fontTypeface)
   result.monoFont = FigFont(typefaceId: typefaceId, size: config.fontSize)
   result.window = newWindyWindow(size = size, fullscreen = false, title = title)
+  trySetWindowIcon(result.window)
   result.window.runeInputEnabled = true
 
   if getEnv("HDI") != "":
