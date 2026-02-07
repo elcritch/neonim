@@ -1,4 +1,4 @@
-version       = "0.5.7"
+version       = "0.5.8"
 author        = "Jaremy Creechley"
 description   = "Neovim backend in Nim and FigDraw"
 license       = "MPL2"
