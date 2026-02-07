@@ -175,10 +175,22 @@ jobs:
           release: "14.2"
           usesh: true
           run: |
-            pkg install -y git curl bash gmake ca_root_nss
-            curl -fsSL https://codeberg.org/janAkali/grabnim/raw/branch/master/misc/install.sh | sh
-            export PATH="$HOME/.local/share/grabnim/current/bin:$HOME/.nimble/bin:$PATH"
-            grabnim 2.2.6
+            set -eux
+            pkg install -y \
+              git \
+              curl \
+              bash \
+              gmake \
+              ca_root_nss \
+              nim \
+              libX11 \
+              libXcursor \
+              libXrandr \
+              libXinerama \
+              libXi \
+              libXxf86vm \
+              mesa-libs
+            nim -v
             nimble install -y 'https://github.com/nim-lang/atlas@#head'
             atlas install --feature:windy --feature:sdl2
             nim build
