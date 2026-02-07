@@ -58,26 +58,25 @@ jobs:
         nimble install 'https://github.com/nim-lang/atlas@#head'
         echo "Nim:: "
         nim -v
-        echo "Nimble:: "
+        echo "Atlas:: "
         atlas -v
 
     - name: Cache packages
       uses: actions/cache@v3
       with:
         path: deps/
-        key: ${{ runner.os }}-${{ hashFiles('figdraw.nimble') }}
+        key: ${{ runner.os }}-${{ hashFiles('neonim.nimble') }}
 
     - name: Install Deps
       if: runner.os == 'Linux'
       run: |
-        # sync deps
-        atlas install --feature:windy --feature:sdl2
+        atlas install
 
     - name: Install Deps
       if: runner.os == 'macOS'
       run: |
         # sync deps
-        atlas install --feature:windy --feature:sdl2
+        atlas install
 
     - name: Build Neonim
       run: |
