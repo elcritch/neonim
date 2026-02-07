@@ -1,0 +1,219 @@
+name: release-binaries
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup software OpenGL/Vulkan (Mesa) + Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb \
+            xauth \
+            mesa-utils \
+            vulkan-tools \
+            mesa-vulkan-drivers \
+            libvulkan1 \
+            libgl1-mesa-dri \
+            libglx-mesa0 \
+            libegl-mesa0 \
+            libgles2
+
+      - name: Install GrabNim
+        run: |
+          curl -fsSL https://codeberg.org/janAkali/grabnim/raw/branch/master/misc/install.sh | sh
+          echo "$HOME/.local/share/grabnim/current/bin" >> $GITHUB_PATH
+          echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+
+      - name: Install Nim
+        run: |
+          grabnim 2.2.6
+          nim -v
+
+      - name: Install Atlas
+        run: |
+          nimble install -y 'https://github.com/nim-lang/atlas@#head'
+          atlas -v
+
+      - name: Cache packages
+        uses: actions/cache@v4
+        with:
+          path: deps/
+          key: release-linux-${{ hashFiles('figdraw.nimble') }}
+
+      - name: Install Deps
+        run: |
+          atlas install --feature:windy --feature:sdl2
+
+      - name: Build neonim
+        run: |
+          nim build
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          tar -czf dist/neonim-linux-amd64.tar.gz -C bin neonim
+
+      - name: Upload packaged binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: neonim-linux-amd64
+          path: dist/neonim-linux-amd64.tar.gz
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GrabNim
+        run: |
+          curl -fsSL https://codeberg.org/janAkali/grabnim/raw/branch/master/misc/install.sh | sh
+          echo "$HOME/.local/share/grabnim/current/bin" >> $GITHUB_PATH
+          echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+
+      - name: Install Nim
+        run: |
+          grabnim 2.2.6
+          nim -v
+
+      - name: Install Atlas
+        run: |
+          nimble install -y 'https://github.com/nim-lang/atlas@#head'
+          atlas -v
+
+      - name: Cache packages
+        uses: actions/cache@v4
+        with:
+          path: deps/
+          key: release-macos-${{ hashFiles('figdraw.nimble') }}
+
+      - name: Install Deps
+        run: |
+          atlas install --feature:windy --feature:sdl2
+
+      - name: Build neonim
+        run: |
+          nim build
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          tar -czf dist/neonim-macos-arm64.tar.gz -C bin neonim
+
+      - name: Upload packaged binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: neonim-macos-arm64
+          path: dist/neonim-macos-arm64.tar.gz
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: "2.2.6"
+
+      - name: Install Atlas
+        shell: pwsh
+        run: |
+          nimble install -y 'https://github.com/nim-lang/atlas@#head'
+          atlas -v
+
+      - name: Cache packages
+        uses: actions/cache@v4
+        with:
+          path: deps/
+          key: release-windows-${{ hashFiles('figdraw.nimble') }}
+
+      - name: Install Deps
+        shell: pwsh
+        run: |
+          atlas install --feature:windy --feature:sdl2
+
+      - name: Build neonim
+        shell: pwsh
+        run: |
+          nim build
+
+      - name: Package binary
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path bin/neonim.exe -DestinationPath dist/neonim-windows-amd64.zip -Force
+
+      - name: Upload packaged binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: neonim-windows-amd64
+          path: dist/neonim-windows-amd64.zip
+          if-no-files-found: error
+
+  build-freebsd:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build neonim on FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.2"
+          usesh: true
+          run: |
+            pkg install -y git curl bash gmake ca_root_nss
+            curl -fsSL https://codeberg.org/janAkali/grabnim/raw/branch/master/misc/install.sh | sh
+            export PATH="$HOME/.local/share/grabnim/current/bin:$HOME/.nimble/bin:$PATH"
+            grabnim 2.2.6
+            nimble install -y 'https://github.com/nim-lang/atlas@#head'
+            atlas install --feature:windy --feature:sdl2
+            nim build
+            mkdir -p dist
+            tar -czf dist/neonim-freebsd-amd64.tar.gz -C bin neonim
+
+      - name: Upload packaged binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: neonim-freebsd-amd64
+          path: dist/neonim-freebsd-amd64.tar.gz
+          if-no-files-found: error
+
+  publish-release-assets:
+    if: github.event_name == 'release'
+    needs:
+      - build-linux
+      - build-macos
+      - build-windows
+      - build-freebsd
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/neonim-linux-amd64.tar.gz
+            dist/neonim-macos-arm64.tar.gz
+            dist/neonim-windows-amd64.zip
+            dist/neonim-freebsd-amd64.tar.gz
