@@ -166,49 +166,49 @@ jobs:
           path: dist/neonim-windows-amd64.zip
           if-no-files-found: error
 
-  build-freebsd:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build neonim on FreeBSD VM
-        uses: vmactions/freebsd-vm@v1
-        with:
-          release: "14.3"
-          usesh: true
-          run: |
-            set -eux
-            pkg install -y \
-              git \
-              curl \
-              bash \
-              gmake \
-              ca_root_nss \
-              nim \
-              libX11 \
-              libXcursor \
-              libXrandr \
-              libXinerama \
-              libXi \
-              libXxf86vm \
-              mesa-libs
-            export PATH="/usr/local/nim/bin:/usr/local/bin:$PATH"
-            export PATH="~/.nimble/bin/:/usr/local/bin:$PATH"
-            nim -v
-            mkdir -p deps
-            git clone 'https://github.com/nim-lang/atlas' deps/atlas
-            nim c -o:./atlas deps/atlas/src/atlas.nim 
-            ./atlas install
-            nim build
-            mkdir -p dist
-            tar -czf dist/neonim-freebsd-amd64.tar.gz -C bin neonim
-
-      - name: Upload packaged binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: neonim-freebsd-amd64
-          path: dist/neonim-freebsd-amd64.tar.gz
-          if-no-files-found: error
+  # build-freebsd:
+  #   runs-on: ubuntu-24.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Build neonim on FreeBSD VM
+  #       uses: vmactions/freebsd-vm@v1
+  #       with:
+  #         release: "14.3"
+  #         usesh: true
+  #         run: |
+  #           set -eux
+  #           pkg install -y \
+  #             git \
+  #             curl \
+  #             bash \
+  #             gmake \
+  #             ca_root_nss \
+  #             nim \
+  #             libX11 \
+  #             libXcursor \
+  #             libXrandr \
+  #             libXinerama \
+  #             libXi \
+  #             libXxf86vm \
+  #             mesa-libs
+  #           export PATH="/usr/local/nim/bin:/usr/local/bin:$PATH"
+  #           export PATH="~/.nimble/bin/:/usr/local/bin:$PATH"
+  #           nim -v
+  #           mkdir -p deps
+  #           git clone 'https://github.com/nim-lang/atlas' deps/atlas
+  #           nim c -o:./atlas deps/atlas/src/atlas.nim 
+  #           ./atlas install
+  #           nim build
+  #           mkdir -p dist
+  #           tar -czf dist/neonim-freebsd-amd64.tar.gz -C bin neonim
+  #
+  #     - name: Upload packaged binary
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: neonim-freebsd-amd64
+  #         path: dist/neonim-freebsd-amd64.tar.gz
+  #         if-no-files-found: error
 
   publish-release-assets:
     if: github.event_name == 'release'
