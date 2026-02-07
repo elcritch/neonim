@@ -43,7 +43,7 @@ jobs:
 
       - name: Install Atlas
         run: |
-          nimble install -y 'https://github.com/nim-lang/atlas@#head'
+          nimble install -y 'https://github.com/nim-lang/atlas@#master'
           atlas -v
 
       - name: Cache packages
@@ -90,7 +90,7 @@ jobs:
 
       - name: Install Atlas
         run: |
-          nimble install -y 'https://github.com/nim-lang/atlas@#head'
+          nimble install -y 'https://github.com/nim-lang/atlas@#master'
           atlas -v
 
       - name: Cache packages
@@ -132,7 +132,7 @@ jobs:
       - name: Install Atlas
         shell: pwsh
         run: |
-          nimble install -y 'https://github.com/nim-lang/atlas@#head'
+          nimble install -y 'https://github.com/nim-lang/atlas@#master'
           atlas -v
 
       - name: Cache packages
@@ -194,7 +194,7 @@ jobs:
             command -v nim
             command -v nimble
             nim -v
-            nimble install -y 'https://github.com/nim-lang/atlas@#head'
+            nimble install -y 'https://github.com/nim-lang/atlas@#master'
             atlas install --feature:windy --feature:sdl2
             nim build
             mkdir -p dist
