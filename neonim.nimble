@@ -1,4 +1,4 @@
-version       = "0.5.0"
+version       = "0.5.1"
 author        = "Jaremy Creechley"
 description   = "Neovim backend in Nim and FigDraw"
 license       = "MPL2"
@@ -10,7 +10,7 @@ requires "nim >= 2.2.6"
 requires "msgpack4nim"
 requires "chronicles"
 
-requires "https://github.com/elcritch/figdraw[windy] >= 0.17.3"
+requires "https://github.com/elcritch/figdraw[windy] >= 0.18.2"
 
 feature "references":
   requires "https://github.com/neovim/neovim"
