@@ -50,11 +50,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: deps/
-          key: release-linux-${{ hashFiles('figdraw.nimble') }}
+          key: release-linux-${{ hashFiles('neonim.nimble') }}
 
       - name: Install Deps
         run: |
-          atlas install --feature:windy --feature:sdl2
+          atlas install
 
       - name: Build neonim
         run: |
@@ -97,7 +97,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: deps/
-          key: release-macos-${{ hashFiles('figdraw.nimble') }}
+          key: release-macos-${{ hashFiles('neonim.nimble') }}
 
       - name: Install Deps
         run: |
@@ -139,12 +139,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: deps/
-          key: release-windows-${{ hashFiles('figdraw.nimble') }}
+          key: release-windows-${{ hashFiles('neonim.nimble') }}
 
       - name: Install Deps
         shell: pwsh
         run: |
-          atlas install --feature:windy --feature:sdl2
+          atlas install
 
       - name: Build neonim
         shell: pwsh
