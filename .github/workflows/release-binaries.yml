@@ -200,8 +200,8 @@ jobs:
             nim -v
             mkdir -p deps
             git clone 'https://github.com/nim-lang/atlas' deps/atlas
-            (cd deps/atlas && nim build);
-            ./deps/atlas/bin/atlas install
+            nim c deps/atlas/src/atlas -o:./atlas
+            ./atlas install
             nim build
             mkdir -p dist
             tar -czf dist/neonim-freebsd-amd64.tar.gz -C bin neonim
