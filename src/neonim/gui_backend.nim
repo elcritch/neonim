@@ -148,6 +148,11 @@ proc keyToNvimInput*(
     return ""
   input
 
+proc runeToNvimInput*(r: Rune): string =
+  if r == Rune('<'):
+    return "<LT>"
+  $r
+
 proc mouseButtonToNvimButton*(button: Button): string =
   case button
   of MouseLeft: "left"

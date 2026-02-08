@@ -530,7 +530,7 @@ proc initGuiRuntime*(
       return
     runtime.state.clearPanelHighlight()
     runtime.state.clearCommittedCmdline()
-    let s = $r
+    let s = runeToNvimInput(r)
     discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.onButtonPress = proc(button: Button) =

@@ -103,6 +103,8 @@ suite "gui backend renders":
     check keyToNvimInput(KeyLeft, ctrlDown = false, altDown = true) == "<A-Left>"
     check keyToNvimInput(KeyEnter, ctrlDown = false, altDown = true) == "<A-CR>"
     check keyToNvimInput(KeyB, ctrlDown = true, altDown = true) == "<A-C-b>"
+    check runeToNvimInput(Rune('<')) == "<LT>"
+    check runeToNvimInput(Rune('a')) == "a"
     check cmdShortcutAction(KeyC) == csaCopy
     check cmdShortcutAction(KeyV) == csaPaste
     check cmdShortcutAction(KeyX) == csaNone
