@@ -10,13 +10,9 @@ when defined(macosx):
   import windy/platforms/macos/macdefs
 
 import figdraw/[commons, fignodes, figrender, windyshim]
-import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend]
+import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend, modifier_state]
 
 const EmbeddedWindowIconPng = staticRead("../data/neonim-icon-128.png")
-const ModifierButtons = {
-  KeyLeftControl, KeyRightControl, KeyLeftShift, KeyRightShift, KeyLeftAlt, KeyRightAlt,
-  KeyLeftSuper, KeyRightSuper,
-}
 
 type GuiRuntime* = ref object
   config*: GuiConfig
@@ -34,7 +30,6 @@ type GuiRuntime* = ref object
   cellH*: float32
   state*: LineGridState
   hl*: HlState
-  modifiersDown*: set[Button]
 
 proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] =
   let cols = max(1, int(size.x / cellW))
@@ -314,25 +309,6 @@ proc trySetWindowIcon(window: Window) =
   except CatchableError as err:
     warn "failed to set window icon", path = iconPath, error = err.msg
 
-proc currentModifierState(
-    runtime: GuiRuntime
-): tuple[ctrlDown, shiftDown, altDown, cmdDown: bool] =
-  let buttons = ButtonView(runtime.modifiersDown)
-  result = (
-    ctrlDown: buttons[KeyLeftControl] or buttons[KeyRightControl],
-    shiftDown: buttons[KeyLeftShift] or buttons[KeyRightShift],
-    altDown: buttons[KeyLeftAlt] or buttons[KeyRightAlt],
-    cmdDown: buttons[KeyLeftSuper] or buttons[KeyRightSuper],
-  )
-
-proc trackModifierButton(runtime: GuiRuntime, button: Button, pressed: bool) =
-  if button notin ModifierButtons:
-    return
-  if pressed:
-    runtime.modifiersDown.incl(button)
-  else:
-    runtime.modifiersDown.excl(button)
-
 proc mouseModifierFlagsFromState(ctrlDown, shiftDown, altDown, cmdDown: bool): string =
   if ctrlDown:
     result.add "C"
@@ -352,7 +328,7 @@ proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
 proc sendMouseInput(runtime: GuiRuntime, button, action: string, row, col: int): bool =
   if button.len == 0:
     return false
-  let modsState = currentModifierState(runtime)
+  let modsState = currentModifierState(runtime.window)
   let mods = mouseModifierFlagsFromState(
     modsState.ctrlDown, modsState.shiftDown, modsState.altDown, modsState.cmdDown
   )
@@ -444,7 +420,6 @@ proc initGuiRuntime*(
   result.config = config
   result.testCfg = testCfg
   result.appRunning = true
-  result.modifiersDown = {}
   result.testStart = epochTime()
   result.figNodesDumpPath = getEnv("NEONIM_FIG_NODES_OUT")
   let size = ivec2(1000, 700)
@@ -502,8 +477,6 @@ proc initGuiRuntime*(
   runtime.window.onResize = proc() =
     runtime.tryResizeUi()
     runtime.state.needsRedraw = true
-  runtime.window.onFocusChange = proc() =
-    runtime.modifiersDown = {}
 
   runtime.window.onMouseMove = proc() =
     let dragButton = mouseDragButtonToNvimButton(runtime.window.buttonDown())
@@ -521,7 +494,7 @@ proc initGuiRuntime*(
       discard runtime.sendMouseInput("wheel", action, cell.row, cell.col)
 
   runtime.window.onRune = proc(r: Rune) =
-    let mods = currentModifierState(runtime)
+    let mods = currentModifierState(runtime.window)
     if mods.ctrlDown:
       return
     if mods.altDown:
@@ -534,11 +507,10 @@ proc initGuiRuntime*(
     discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.onButtonPress = proc(button: Button) =
-    runtime.trackModifierButton(button, true)
     if runtime.handleMouseButton(button, "press"):
       return
     runtime.state.clearCommittedCmdline()
-    let mods = currentModifierState(runtime)
+    let mods = currentModifierState(runtime.window)
     var shortcutMods: set[Button] = {}
     if mods.cmdDown:
       shortcutMods.incl KeyLeftSuper
@@ -562,7 +534,6 @@ proc initGuiRuntime*(
       discard runtime.safeRequest("nvim_input", rpcPackParams(input))
 
   runtime.window.onButtonRelease = proc(button: Button) =
-    runtime.trackModifierButton(button, false)
     discard runtime.handleMouseButton(button, "release")
 
 proc runWindyFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): bool =
