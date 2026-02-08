@@ -35,8 +35,6 @@ type GuiRuntime* = ref object
   state*: LineGridState
   hl*: HlState
   modifiersDown*: set[Button]
-  when UseMetalBackend:
-    metalHandle*: MetalLayerHandle
 
 proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] =
   let cols = max(1, int(size.x / cellW))
@@ -126,8 +124,7 @@ proc dumpFigNodes*(
   writeFile(path, dump)
 
 proc redrawGui*(runtime: GuiRuntime) =
-  when UseMetalBackend:
-    runtime.metalHandle.updateMetalLayer(runtime.window)
+  runtime.renderer.beginFrame()
   let sz = runtime.window.logicalSize()
   let phys = vec2(runtime.window.size())
   var renders = makeRenderTree(
@@ -143,8 +140,7 @@ proc redrawGui*(runtime: GuiRuntime) =
     runtime.window.contentScale(),
   )
   runtime.renderer.renderFrame(renders, sz)
-  when not UseMetalBackend:
-    runtime.window.swapBuffers()
+  runtime.renderer.endFrame()
 
 proc safeRequest(
     runtime: GuiRuntime, methodName: string, params: RpcParamsBuffer
@@ -468,10 +464,7 @@ proc initGuiRuntime*(
 
   result.renderer =
     newFigRenderer(atlasSize = 4096, backendState = WindyRenderBackend())
-  when UseMetalBackend:
-    result.metalHandle =
-      attachMetalLayer(result.window, result.renderer.ctx.metalDevice())
-    result.renderer.ctx.presentLayer = result.metalHandle.layer
+  result.renderer.setupBackend(result.window)
 
   result.client = newNeovimClient()
   result.client.start(config.nvimCmd, config.nvimArgs)
