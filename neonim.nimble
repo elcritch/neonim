@@ -3,6 +3,7 @@ author        = "Jaremy Creechley"
 description   = "Neovim backend in Nim and FigDraw"
 license       = "MPL2"
 srcDir        = "src"
+bin           = @["neonim"]
 
 # Dependencies
 
