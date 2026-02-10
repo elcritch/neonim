@@ -10,4 +10,3 @@ task test, "run unit test":
     if testFile.endsWith(".nim") and testFile.startsWith("t"):
       exec("nim c -r " & testFile)
   buildTask()
-
