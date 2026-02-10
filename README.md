@@ -37,6 +37,11 @@ bin/neonim .
 # Open a specific folder
 bin/neonim ~/code/my-project
 
+# Run detached (returns terminal immediately; Neonim keeps running if terminal closes)
+bin/neonim -D ~/code/my-project
+# or
+bin/neonim --detach ~/code/my-project
+
 # Set FONT or HDI
 HDI=1.8 FONT="JetBrainsMonoNLNerdFont-Thin.ttf" bin/neonim ~/code/my-project
 

@@ -1,6 +1,6 @@
 ## Neonim - Neovim GUI backend in Nim.
 ##
-import std/[streams, os, strutils, times]
+import std/[streams, os, osproc, strutils, times]
 import chronicles
 
 import vmath
@@ -548,14 +548,35 @@ proc runWindyFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): boo
 proc runWindyFigdrawGui*(config: GuiConfig) =
   discard runWindyFigdrawGuiWithTest(config, GuiTestConfig())
 
+proc parseLaunchArgs*(args: seq[string]): tuple[detach: bool, nvimArgs: seq[string]] =
+  result.nvimArgs = @[]
+  var passthroughOnly = false
+  for arg in args:
+    if passthroughOnly:
+      result.nvimArgs.add(arg)
+      continue
+    if arg == "--":
+      passthroughOnly = true
+      result.nvimArgs.add(arg)
+      continue
+    if arg == "-D" or arg == "--detach":
+      result.detach = true
+      continue
+    result.nvimArgs.add(arg)
+
+proc launchDetached*(args: seq[string]) =
+  let child = startProcess(getAppFilename(), args = args, options = {poDaemon})
+  child.close()
+
 proc guiConfigFromCli*(args: seq[string]): GuiConfig =
+  let launch = parseLaunchArgs(args)
   registerStaticTypeface(
     "HackNerdFont-Regular.ttf", ".." / "data" / "HackNerdFont-Regular.ttf"
   )
 
   result = GuiConfig(
     nvimCmd: "nvim",
-    nvimArgs: args,
+    nvimArgs: launch.nvimArgs,
     windowTitle: "neonim (windy + figdraw)",
     fontTypeface: getEnv("FONT", "HackNerdFont-Regular.ttf"),
     defaultTypeface: "HackNerdFont-Regular.ttf",
@@ -563,4 +584,12 @@ proc guiConfigFromCli*(args: seq[string]): GuiConfig =
   )
 
 when isMainModule:
-  runWindyFigdrawGui(guiConfigFromCli(commandLineParams()))
+  let launch = parseLaunchArgs(commandLineParams())
+  if launch.detach:
+    try:
+      launchDetached(launch.nvimArgs)
+      quit(0)
+    except CatchableError as err:
+      stderr.writeLine("neonim: failed to detach: ", err.msg)
+      quit(1)
+  runWindyFigdrawGui(guiConfigFromCli(launch.nvimArgs))
