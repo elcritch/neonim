@@ -3,9 +3,9 @@ import std/[os, unicode, unittest, tables]
 import figdraw/commons
 import figdraw/common/fonttypes
 import figdraw/fignodes
-import figdraw/windyshim
 
 import neonim/gui_backend
+import neonim/windowing_backend
 import neonim/ui_linegrid
 
 var cachedFontId: FontId = FontId(0)

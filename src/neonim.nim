@@ -1,15 +1,14 @@
 ## Neonim - Neovim GUI backend in Nim.
 ##
-import std/[streams, os, osproc, strutils, times]
+import std/[streams, os, osproc, strutils, times, unicode]
 import chronicles
 
 import vmath
 import msgpack4nim
 import pkg/pixie
-when defined(macosx):
-  import windy/platforms/macos/macdefs
+import ./neonim/windowing_backend
 
-import figdraw/[commons, fignodes, figrender, windyshim]
+import figdraw/[commons, fignodes, figrender]
 import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend, modifier_state]
 
 const EmbeddedWindowIconPng = staticRead("../data/neonim-icon-128.png")
@@ -23,7 +22,7 @@ type GuiRuntime* = ref object
   testPassed*: bool
   figNodesDumpPath*: string
   window*: Window
-  renderer*: FigRenderer[WindyRenderBackend]
+  renderer*: FigRenderer[NeonimRenderBackend]
   client*: NeovimClient
   monoFont*: FigFont
   cellW*: float32
@@ -269,31 +268,9 @@ proc resolveDataDir(fontTypeface: string): string =
 proc sourceDataDir(): string =
   normalizedPath(parentDir(currentSourcePath()) / ".." / "data")
 
-when defined(macosx):
-  objc:
-    proc setApplicationIconImage(self: NSApplication, x: NSImage)
-
-  proc trySetMacAppIcon(iconBytes: string, source = "embedded") =
-    try:
-      if iconBytes.len == 0:
-        warn "empty macOS app icon bytes", source = source
-        return
-      autoreleasepool:
-        let data =
-          NSData.dataWithBytes(cast[pointer](unsafeAddr iconBytes[0]), iconBytes.len)
-        let image = NSImage.alloc().initWithData(data)
-        if image.int == 0:
-          warn "failed to decode macOS app icon image", source = source
-          return
-        NSApp.setApplicationIconImage(image)
-    except CatchableError as err:
-      warn "failed to set macOS app icon", source = source, error = err.msg
-
 proc trySetWindowIcon(window: Window) =
   try:
     window.icon = pixie.decodeImage(EmbeddedWindowIconPng)
-    when defined(macosx):
-      trySetMacAppIcon(EmbeddedWindowIconPng)
     return
   except CatchableError as err:
     warn "failed to set embedded window icon", error = err.msg
@@ -304,8 +281,6 @@ proc trySetWindowIcon(window: Window) =
     return
   try:
     window.icon = pixie.readImage(iconPath)
-    when defined(macosx):
-      trySetMacAppIcon(readFile(iconPath), source = iconPath)
   except CatchableError as err:
     warn "failed to set window icon", path = iconPath, error = err.msg
 
@@ -391,7 +366,7 @@ proc handleGuiTest*(runtime: GuiRuntime) =
     runtime.appRunning = false
 
 proc stepGui*(runtime: GuiRuntime): bool =
-  pollEvents()
+  pollWindowEvents(runtime.window)
   runtime.client.poll()
   if not runtime.client.isRunning():
     runtime.appRunning = false
@@ -426,7 +401,7 @@ proc initGuiRuntime*(
   let title = "Neonim"
   let typefaceId = loadTypeface(config.fontTypeface, [config.defaultTypeface])
   result.monoFont = FigFont(typefaceId: typefaceId, size: config.fontSize)
-  result.window = newWindyWindow(size = size, fullscreen = false, title = title)
+  result.window = newNeonimWindow(size = size, fullscreen = false, title = title)
   trySetWindowIcon(result.window)
   result.window.runeInputEnabled = true
 
@@ -438,8 +413,8 @@ proc initGuiRuntime*(
     result.window.size = size.scaled()
 
   result.renderer =
-    newFigRenderer(atlasSize = 4096, backendState = WindyRenderBackend())
-  result.renderer.setupBackend(result.window)
+    newFigRenderer(atlasSize = 4096, backendState = NeonimRenderBackend())
+  result.renderer.setupBackend(result.window.backendWindow())
 
   result.client = newNeovimClient()
   result.client.start(config.nvimCmd, config.nvimArgs)
@@ -536,7 +511,7 @@ proc initGuiRuntime*(
   runtime.window.onButtonRelease = proc(button: Button) =
     discard runtime.handleMouseButton(button, "release")
 
-proc runWindyFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): bool =
+proc runFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): bool =
   let runtime = initGuiRuntime(config, testCfg)
   try:
     while runtime.appRunning:
@@ -545,8 +520,8 @@ proc runWindyFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): boo
     runtime.shutdownGui()
   result = (not testCfg.enabled) or runtime.testPassed
 
-proc runWindyFigdrawGui*(config: GuiConfig) =
-  discard runWindyFigdrawGuiWithTest(config, GuiTestConfig())
+proc runFigdrawGui*(config: GuiConfig) =
+  discard runFigdrawGuiWithTest(config, GuiTestConfig())
 
 proc parseLaunchArgs*(args: seq[string]): tuple[detach: bool, nvimArgs: seq[string]] =
   result.nvimArgs = @[]
@@ -577,7 +552,7 @@ proc guiConfigFromCli*(args: seq[string]): GuiConfig =
   result = GuiConfig(
     nvimCmd: "nvim",
     nvimArgs: launch.nvimArgs,
-    windowTitle: "neonim (windy + figdraw)",
+    windowTitle: "neonim (" & NeonimWindowBackendName & " + figdraw)",
     fontTypeface: getEnv("FONT", "HackNerdFont-Regular.ttf"),
     defaultTypeface: "HackNerdFont-Regular.ttf",
     fontSize: 16.0'f32,
@@ -592,4 +567,4 @@ when isMainModule:
     except CatchableError as err:
       stderr.writeLine("neonim: failed to detach: ", err.msg)
       quit(1)
-  runWindyFigdrawGui(guiConfigFromCli(launch.nvimArgs))
+  runFigdrawGui(guiConfigFromCli(launch.nvimArgs))

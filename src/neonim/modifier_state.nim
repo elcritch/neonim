@@ -1,13 +1,16 @@
-import figdraw/windyshim
+import ./windowing_backend
 
 type ModifierState* = tuple[ctrlDown, shiftDown, altDown, cmdDown: bool]
 
 proc modifierStateFromButtons*(buttons: ButtonView): ModifierState =
   (
-    ctrlDown: buttons[KeyLeftControl] or buttons[KeyRightControl],
-    shiftDown: buttons[KeyLeftShift] or buttons[KeyRightShift],
-    altDown: buttons[KeyLeftAlt] or buttons[KeyRightAlt],
-    cmdDown: buttons[KeyLeftSuper] or buttons[KeyRightSuper],
+    ctrlDown:
+      buttonPressed(buttons, KeyLeftControl) or buttonPressed(buttons, KeyRightControl),
+    shiftDown:
+      buttonPressed(buttons, KeyLeftShift) or buttonPressed(buttons, KeyRightShift),
+    altDown: buttonPressed(buttons, KeyLeftAlt) or buttonPressed(buttons, KeyRightAlt),
+    cmdDown:
+      buttonPressed(buttons, KeyLeftSuper) or buttonPressed(buttons, KeyRightSuper),
   )
 
 when defined(macosx):

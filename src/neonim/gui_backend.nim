@@ -6,8 +6,9 @@ else:
 import chroma
 import pkg/pixie/fonts
 
-import figdraw/[commons, fignodes, figrender, windyshim]
+import figdraw/[commons, fignodes, figrender]
 import figdraw/common/fonttypes
+import ./windowing_backend
 
 when not UseMetalBackend:
   import figdraw/utils/glutils
@@ -21,11 +22,10 @@ const
   UiScaleMin* = 0.5'f32
   UiScaleMax* = 4.0'f32
 
-type
-  CmdShortcutAction* = enum
-    csaNone,
-    csaCopy,
-    csaPaste
+type CmdShortcutAction* = enum
+  csaNone
+  csaCopy
+  csaPaste
 
 proc monoMetrics*(font: FigFont): tuple[advance: float32, lineHeight: float32] =
   let (_, px) = font.convertFont()
@@ -174,26 +174,26 @@ proc multiClickToNvimInput*(button: Button, row, col: int): string =
   "<" & clickCount & "-LeftMouse><" & $col & "," & $row & ">"
 
 proc mouseDragButtonToNvimButton*(buttons: ButtonView): string =
-  if buttons[MouseLeft]:
+  if buttonPressed(buttons, MouseLeft):
     return "left"
-  if buttons[MouseRight]:
+  if buttonPressed(buttons, MouseRight):
     return "right"
-  if buttons[MouseMiddle]:
+  if buttonPressed(buttons, MouseMiddle):
     return "middle"
-  if buttons[MouseButton4]:
+  if buttonPressed(buttons, MouseButton4):
     return "x1"
-  if buttons[MouseButton5]:
+  if buttonPressed(buttons, MouseButton5):
     return "x2"
   ""
 
 proc mouseModifierFlags*(buttons: ButtonView): string =
-  if buttons[KeyLeftControl] or buttons[KeyRightControl]:
+  if buttonPressed(buttons, KeyLeftControl) or buttonPressed(buttons, KeyRightControl):
     result.add "C"
-  if buttons[KeyLeftShift] or buttons[KeyRightShift]:
+  if buttonPressed(buttons, KeyLeftShift) or buttonPressed(buttons, KeyRightShift):
     result.add "S"
-  if buttons[KeyLeftAlt] or buttons[KeyRightAlt]:
+  if buttonPressed(buttons, KeyLeftAlt) or buttonPressed(buttons, KeyRightAlt):
     result.add "A"
-  if buttons[KeyLeftSuper] or buttons[KeyRightSuper]:
+  if buttonPressed(buttons, KeyLeftSuper) or buttonPressed(buttons, KeyRightSuper):
     result.add "D"
 
 proc mouseGridCell*(
@@ -217,7 +217,8 @@ proc mouseScrollActions*(delta: Vec2): seq[string] =
     result.add(if x > 0: "left" else: "right")
 
 proc uiScaleDeltaForShortcut*(button: Button, buttons: ButtonView): float32 =
-  let cmdDown = buttons[KeyLeftSuper] or buttons[KeyRightSuper]
+  let cmdDown =
+    buttonPressed(buttons, KeyLeftSuper) or buttonPressed(buttons, KeyRightSuper)
   if not cmdDown:
     return 0.0'f32
   case button
@@ -232,12 +233,9 @@ proc uiScaleDeltaForShortcut*(button: Button, buttons: ButtonView): float32 =
 
 proc cmdShortcutAction*(button: Button): CmdShortcutAction =
   case button
-  of KeyC:
-    csaCopy
-  of KeyV:
-    csaPaste
-  else:
-    csaNone
+  of KeyC: csaCopy
+  of KeyV: csaPaste
+  else: csaNone
 
 proc isVisualLikeMode*(mode: string): bool =
   if mode.len == 0:

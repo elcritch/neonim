@@ -1,5 +1,8 @@
 --nimcache:".nimcache/"
 
+when defined(macosx):
+  switch("passC", "-Wno-incompatible-function-pointer-types")
+
 import std/[algorithm, sequtils, strutils, os]
 
 task build, "build neonim":

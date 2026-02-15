@@ -1,8 +1,7 @@
 import std/unittest
 
-import figdraw/windyshim
-
 import neonim/modifier_state
+import neonim/windowing_backend
 
 suite "modifier state":
   test "maps modifier buttons into modifier state":

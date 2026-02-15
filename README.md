@@ -2,7 +2,7 @@
 
 # neonim
 
-Neovim GUI frontend written in Nim (Windy + FigDraw).
+Neovim GUI frontend written in Nim (Siwin + FigDraw).
 
 <img width="1444" height="944" alt="neonim-screenshot" src="https://github.com/user-attachments/assets/3c12d300-f8eb-4388-bbe8-937c4f90b9ec" />
 
