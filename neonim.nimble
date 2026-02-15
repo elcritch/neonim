@@ -11,7 +11,7 @@ requires "nim >= 2.2.6"
 requires "msgpack4nim"
 requires "chronicles"
 
-requires "https://github.com/elcritch/figdraw[windy] >= 0.18.9"
+requires "https://github.com/elcritch/figdraw[siwin] >= 0.19.0"
 
 feature "references":
   requires "https://github.com/neovim/neovim"
