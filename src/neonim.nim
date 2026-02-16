@@ -28,7 +28,6 @@ type GuiRuntime* = ref object
   cellW*: float32
   cellH*: float32
   scrollSpeedMultiplier*: float32
-  #iconRetriedAfterFirstStep: bool
   state*: LineGridState
   hl*: HlState
 
@@ -377,8 +376,6 @@ proc stepGui*(runtime: GuiRuntime): bool =
   if runtime.state.needsRedraw:
     runtime.redrawGui()
     runtime.state.needsRedraw = false
-  #when not defined(emscripten):
-  #  sleep(8)
   result = runtime.appRunning
 
 proc shutdownGui*(runtime: GuiRuntime) =
