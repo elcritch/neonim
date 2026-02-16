@@ -13,9 +13,8 @@ requires "chronicles"
 requires "opengl"
 requires "pixie"
 
-feature "siwin":
-  requires "https://github.com/elcritch/figdraw[siwin] >= 0.19.2"
-  #requires "https://github.com/elcritch/siwin#more-examples"
+requires "https://github.com/elcritch/figdraw >= 0.19.2"
+requires "https://github.com/elcritch/siwin#more-examples"
 
 feature "references":
   requires "https://github.com/neovim/neovim"
