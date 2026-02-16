@@ -31,7 +31,7 @@ type GuiRuntime* = ref object
   iconRetriedAfterFirstStep: bool
   state*: LineGridState
   hl*: HlState
-  frameIdle*: uint
+  frameIdle*: int
 
 proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] =
   let cols = max(1, int(size.x / cellW))
@@ -385,9 +385,13 @@ proc stepGui*(runtime: GuiRuntime): bool =
     runtime.redrawGui()
     runtime.state.needsRedraw = false
     didRedraw = true
+    runtime.frameIdle = 0
   when not defined(emscripten):
     if not didRedraw:
-      sleep(16)
+      runtime.frameIdle = min(runtime.frameIdle + 1, 1024)
+      #if runtime.frameIdle mod 8 == 0:
+      #  echo "sleep time: ", (runtime.frameIdle div 8), " idle: ", runtime.frameIdle
+      sleep(runtime.frameIdle div 8)
   result = runtime.appRunning
 
 proc shutdownGui*(runtime: GuiRuntime) =
