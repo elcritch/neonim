@@ -377,8 +377,8 @@ proc stepGui*(runtime: GuiRuntime): bool =
   if runtime.state.needsRedraw:
     runtime.redrawGui()
     runtime.state.needsRedraw = false
-  when not defined(emscripten):
-    sleep(8)
+  #when not defined(emscripten):
+  #  sleep(8)
   result = runtime.appRunning
 
 proc shutdownGui*(runtime: GuiRuntime) =
