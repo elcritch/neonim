@@ -341,6 +341,8 @@ proc adjustUiScale(runtime: GuiRuntime, delta: float32): bool =
   runtime.cellH = cellH
   runtime.tryResizeUi()
   runtime.state.needsRedraw = true
+  when not defined(emscripten):
+    sleep(8)
   info "ui scale", previous = current, current = next, cellW = cellW, cellH = cellH
   result = true
 
