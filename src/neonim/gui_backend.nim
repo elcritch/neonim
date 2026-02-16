@@ -17,6 +17,7 @@ import ./[ui_linegrid]
 
 const
   MouseScrollUnit = 10'f32
+  DefaultMouseScrollSpeedMultiplier* = 1.8'f32
   PanelHighlightFill* = rgba(248, 210, 120, 36).color
   UiScaleStep* = 0.05'f32
   UiScaleMin* = 0.5'f32
@@ -206,9 +207,12 @@ proc mouseGridCell*(
   result.col = min(cols - 1, max(0, rawCol))
   result.row = min(rows - 1, max(0, rawRow))
 
-proc mouseScrollActions*(delta: Vec2): seq[string] =
-  let x = delta.x
-  let y = delta.y
+proc mouseScrollActions*(
+    delta: Vec2, speedMultiplier = DefaultMouseScrollSpeedMultiplier
+): seq[string] =
+  let multiplier = max(speedMultiplier, 0.01'f32)
+  let x = delta.x * multiplier
+  let y = delta.y * multiplier
   let ySteps = max(0, int(abs(y) / MouseScrollUnit + 0.999'f32))
   let xSteps = max(0, int(abs(x) / MouseScrollUnit + 0.999'f32))
   for _ in 0 ..< ySteps:

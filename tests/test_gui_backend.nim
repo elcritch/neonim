@@ -84,10 +84,13 @@ suite "gui backend renders":
     check mouseGridCell(vec2(999, 999), rows = 10, cols = 20, cellW = 8, cellH = 4) ==
       (row: 9, col: 19)
 
-    check mouseScrollActions(vec2(0, 10)) == @["up"]
-    check mouseScrollActions(vec2(0, -10)) == @["down"]
-    check mouseScrollActions(vec2(10, 0)) == @["left"]
-    check mouseScrollActions(vec2(-10, 0)) == @["right"]
+    check mouseScrollActions(vec2(0, 10)) == @["up", "up"]
+    check mouseScrollActions(vec2(0, -10)) == @["down", "down"]
+    check mouseScrollActions(vec2(10, 0)) == @["left", "left"]
+    check mouseScrollActions(vec2(-10, 0)) == @["right", "right"]
+    check mouseScrollActions(vec2(0, 10), speedMultiplier = 1.0'f32) == @["up"]
+    check mouseScrollActions(vec2(0, 10), speedMultiplier = 3.0'f32) ==
+      @["up", "up", "up"]
     check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftSuper, KeyLeftShift})) ==
       UiScaleStep
     check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftSuper})) == UiScaleStep

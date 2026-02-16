@@ -27,6 +27,7 @@ type GuiRuntime* = ref object
   monoFont*: FigFont
   cellW*: float32
   cellH*: float32
+  scrollSpeedMultiplier*: float32
   state*: LineGridState
   hl*: HlState
 
@@ -384,6 +385,20 @@ proc shutdownGui*(runtime: GuiRuntime) =
     runtime.window.close()
   runtime.client.stop()
 
+proc scrollSpeedMultiplierFromEnv*(): float32 =
+  const EnvKey = "NEONIM_SCROLL_SPEED_MULTIPLIER"
+  let raw = getEnv(EnvKey)
+  if raw.len == 0:
+    return DefaultMouseScrollSpeedMultiplier
+  try:
+    let parsed = raw.parseFloat().float32
+    if parsed > 0:
+      return parsed
+    warn "invalid scroll speed multiplier, must be > 0", env = EnvKey, value = raw
+  except ValueError:
+    warn "invalid scroll speed multiplier, must be numeric", env = EnvKey, value = raw
+  DefaultMouseScrollSpeedMultiplier
+
 proc initGuiRuntime*(
     config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig()
 ): GuiRuntime =
@@ -395,6 +410,7 @@ proc initGuiRuntime*(
   result.config = config
   result.testCfg = testCfg
   result.appRunning = true
+  result.scrollSpeedMultiplier = scrollSpeedMultiplierFromEnv()
   result.testStart = epochTime()
   result.figNodesDumpPath = getEnv("NEONIM_FIG_NODES_OUT")
   let size = ivec2(1000, 700)
@@ -461,7 +477,8 @@ proc initGuiRuntime*(
     discard runtime.sendMouseInput(dragButton, "drag", cell.row, cell.col)
 
   runtime.window.onScroll = proc() =
-    let actions = mouseScrollActions(runtime.window.scrollDelta())
+    let actions =
+      mouseScrollActions(runtime.window.scrollDelta(), runtime.scrollSpeedMultiplier)
     if actions.len == 0:
       return
     let cell = runtime.mouseCell()

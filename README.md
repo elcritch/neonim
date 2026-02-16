@@ -45,6 +45,9 @@ bin/neonim --detach ~/code/my-project
 # Set FONT or HDI
 HDI=1.8 FONT="JetBrainsMonoNLNerdFont-Thin.ttf" bin/neonim ~/code/my-project
 
+# Increase/decrease mouse wheel scroll speed (default is 1.5)
+NEONIM_SCROLL_SPEED_MULTIPLIER=2.0 bin/neonim ~/code/my-project
+
 # Forward nvim args directly
 bin/neonim -u NONE --noplugin +':set number' ~/code/my-project
 ```
