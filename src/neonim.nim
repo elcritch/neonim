@@ -28,6 +28,7 @@ type GuiRuntime* = ref object
   cellW*: float32
   cellH*: float32
   scrollSpeedMultiplier*: float32
+  iconRetriedAfterFirstStep: bool
   state*: LineGridState
   hl*: HlState
 
@@ -368,6 +369,9 @@ proc handleGuiTest*(runtime: GuiRuntime) =
 
 proc stepGui*(runtime: GuiRuntime): bool =
   pollWindowEvents(runtime.window)
+  if not runtime.iconRetriedAfterFirstStep:
+    trySetWindowIcon(runtime.window)
+    runtime.iconRetriedAfterFirstStep = true
   runtime.client.poll()
   if not runtime.client.isRunning():
     runtime.appRunning = false
