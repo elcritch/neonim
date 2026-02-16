@@ -28,6 +28,7 @@ type GuiRuntime* = ref object
   cellW*: float32
   cellH*: float32
   scrollSpeedMultiplier*: float32
+  #iconRetriedAfterFirstStep: bool
   state*: LineGridState
   hl*: HlState
 

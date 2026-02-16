@@ -3,6 +3,7 @@ import std/unicode
 import vmath
 import pkg/pixie
 import siwin/clipboards
+import siwin/colorutils
 import figdraw/figrender
 import figdraw/windowing/siwinshim as siwin
 
@@ -382,8 +383,17 @@ proc scrollDelta*(window: Window): Vec2 =
   window.lastScroll
 
 proc `icon=`*(window: Window, image: Image) =
-  discard window
-  discard image
+  if window.isNil or window.raw.isNil:
+    return
+  if image.isNil or image.width <= 0 or image.height <= 0 or image.data.len == 0:
+    window.raw.icon = nil
+    return
+  var pixelBuffer = PixelBuffer(
+    data: image.data[0].addr,
+    size: ivec2(image.width.int32, image.height.int32),
+    format: PixelBufferFormat.rgbx_32bit,
+  )
+  window.raw.icon = pixelBuffer
 
 proc setClipboardString*(value: string) =
   if clipboardWindow.isNil or clipboardWindow.raw.isNil:
