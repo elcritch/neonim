@@ -10,7 +10,7 @@ import siwin/[clipboards, colorutils]
 import figdraw/windowing/siwinshim as siwin
 
 import figdraw/[commons, fignodes, figrender]
-import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend, modifier_state]
+import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend]
 
 const
   EmbeddedWindowIconPng = staticRead("../data/neonim-icon-128.png")
@@ -282,6 +282,31 @@ proc resolveDataDir(fontTypeface: string): string =
 proc sourceDataDir(): string =
   normalizedPath(parentDir(currentSourcePath()) / ".." / "data")
 
+proc formatModifierSet(modifiers: ModifierView): string =
+  if siwin.ModifierKey.shift in modifiers:
+    result.add "S"
+  if siwin.ModifierKey.control in modifiers:
+    result.add "C"
+  if siwin.ModifierKey.alt in modifiers:
+    result.add "A"
+  if siwin.ModifierKey.system in modifiers:
+    result.add "D"
+  if siwin.ModifierKey.capsLock in modifiers:
+    result.add "Caps"
+  if siwin.ModifierKey.numLock in modifiers:
+    result.add "Num"
+  if result.len == 0:
+    result = "-"
+
+proc formatInputText(text: string): string =
+  for r in text.runes:
+    let code = int(r)
+    if code >= 32 and code < 127:
+      result.add char(code)
+    else:
+      result.add "\\u"
+      result.add code.toHex(4)
+
 proc setWindowIcon(window: siwin.Window, image: Image): bool =
   if window.isNil:
     return false
@@ -352,13 +377,16 @@ proc handleMouseMultiClick(runtime: GuiRuntime, clickCount: int): bool =
 
 proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView) =
   runtime.state.clearCommittedCmdline()
-  let mods = currentModifierState(modifiers)
+  let ctrlDown = siwin.ModifierKey.control in modifiers
+  let shiftDown = siwin.ModifierKey.shift in modifiers
+  let altDown = siwin.ModifierKey.alt in modifiers
+  let cmdDown = siwin.ModifierKey.system in modifiers
   let uiDelta = uiScaleDeltaForShortcut(key, modifiers)
   if uiDelta != 0.0'f32:
     runtime.state.clearPanelHighlight()
     discard runtime.adjustUiScale(uiDelta)
     return
-  if mods.cmdDown and runtime.handleCmdShortcut(key):
+  if cmdDown and runtime.handleCmdShortcut(key):
     return
   runtime.state.clearPanelHighlight()
   if key == siwin.Key.enter and runtime.state.cmdlineActive:
@@ -366,7 +394,9 @@ proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView
   if key == siwin.Key.escape:
     runtime.state.cmdlineCommitPending = false
     runtime.state.cmdlineCommittedText = ""
-  let input = keyToNvimInput(key, mods.ctrlDown, mods.altDown, mods.shiftDown)
+  let input = keyToNvimInput(key, ctrlDown, altDown, shiftDown)
+  info "input key mapped",
+    key = $key, modifiers = formatModifierSet(modifiers), mapped = input
   if input.len > 0:
     discard runtime.safeRequest("nvim_input", rpcPackParams(input))
 
@@ -552,21 +582,39 @@ proc initGuiRuntime*(
       discard runtime.sendMouseInput("wheel", action, cell.row, cell.col)
 
   runtime.window.eventsHandler.onTextInput = proc(e: siwin.TextInputEvent) =
-    let mods = currentModifierState(runtime.modifiers)
-    if mods.ctrlDown:
+    info "input text event",
+      text = formatInputText(e.text),
+      modifiers = formatModifierSet(runtime.modifiers),
+      repeated = e.repeated
+    let ctrlDown = siwin.ModifierKey.control in runtime.modifiers
+    let altDown = siwin.ModifierKey.alt in runtime.modifiers
+    let cmdDown = siwin.ModifierKey.system in runtime.modifiers
+    if ctrlDown:
       return
-    if mods.altDown:
+    if altDown:
       return
-    if mods.cmdDown:
+    if cmdDown:
       return
     runtime.state.clearPanelHighlight()
     runtime.state.clearCommittedCmdline()
     for r in e.text.runes:
+      let code = int(r)
+      # Some platforms emit control-code text for special keys (e.g. Up -> 0x1E).
+      # Those keys are already handled by onKey, so ignore non-printable text input.
+      if code < 32 or code == 127:
+        info "input text filtered", rune = code
+        continue
       let s = runeToNvimInput(r)
       discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.eventsHandler.onKey = proc(e: siwin.KeyEvent) =
     runtime.modifiers = e.modifiers
+    info "input key event",
+      key = $e.key,
+      modifiers = formatModifierSet(e.modifiers),
+      pressed = e.pressed,
+      repeated = e.repeated,
+      generated = e.generated
     if not e.pressed:
       return
     runtime.handleKeyPress(e.key, e.modifiers)
