@@ -395,7 +395,7 @@ proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView
     runtime.state.cmdlineCommitPending = false
     runtime.state.cmdlineCommittedText = ""
   let input = keyToNvimInput(key, ctrlDown, altDown, shiftDown)
-  info "input key mapped",
+  trace "input key mapped",
     key = $key, modifiers = formatModifierSet(modifiers), mapped = input
   if input.len > 0:
     discard runtime.safeRequest("nvim_input", rpcPackParams(input))
