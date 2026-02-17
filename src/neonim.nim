@@ -582,7 +582,7 @@ proc initGuiRuntime*(
       discard runtime.sendMouseInput("wheel", action, cell.row, cell.col)
 
   runtime.window.eventsHandler.onTextInput = proc(e: siwin.TextInputEvent) =
-    info "input text event",
+    trace "input text event",
       text = formatInputText(e.text),
       modifiers = formatModifierSet(runtime.modifiers),
       repeated = e.repeated
@@ -602,14 +602,13 @@ proc initGuiRuntime*(
       # Some platforms emit control-code text for special keys (e.g. Up -> 0x1E).
       # Those keys are already handled by onKey, so ignore non-printable text input.
       if code < 32 or code == 127:
-        info "input text filtered", rune = code
         continue
       let s = runeToNvimInput(r)
       discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.eventsHandler.onKey = proc(e: siwin.KeyEvent) =
     runtime.modifiers = e.modifiers
-    info "input key event",
+    trace "input key event",
       key = $e.key,
       modifiers = formatModifierSet(e.modifiers),
       pressed = e.pressed,
