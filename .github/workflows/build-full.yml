@@ -27,6 +27,15 @@ jobs:
         sudo apt-get install -y --no-install-recommends \
           xvfb \
           xauth \
+          libx11-dev \
+          libx11-xcb-dev \
+          libxcursor-dev \
+          libxi-dev \
+          libxinerama-dev \
+          libxrandr-dev \
+          libxrender1 \
+          libxrender-dev \
+          libxxf86vm-dev \
           mesa-utils \
           vulkan-tools \
           mesa-vulkan-drivers \
