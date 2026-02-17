@@ -55,7 +55,7 @@ jobs:
 
     - name: Install Atlas
       run: |
-        nimble install 'https://github.com/nim-lang/atlas@#head'
+        nimble install 'https://github.com/elcritch/atlas@#lazy-load-historical-deps'
         echo "Nim:: "
         nim -v
         echo "Atlas:: "
