@@ -5,8 +5,9 @@ else:
 
 import chroma
 import pkg/pixie/fonts
+import figdraw/windowing/siwinshim as siwin
 
-import figdraw/[commons, fignodes, figrender, windyshim]
+import figdraw/[commons, fignodes, figrender]
 import figdraw/common/fonttypes
 
 when not UseMetalBackend:
@@ -16,15 +17,19 @@ import ./[ui_linegrid]
 
 const
   MouseScrollUnit = 10'f32
+  DefaultMouseScrollSpeedMultiplier* = 1.0'f32
   PanelHighlightFill* = rgba(248, 210, 120, 36).color
   UiScaleStep* = 0.05'f32
   UiScaleMin* = 0.5'f32
   UiScaleMax* = 4.0'f32
 
 type
+  ModifierView* = set[siwin.ModifierKey]
+  MouseButtonView* = set[siwin.MouseButton]
+
   CmdShortcutAction* = enum
-    csaNone,
-    csaCopy,
+    csaNone
+    csaCopy
     csaPaste
 
 proc monoMetrics*(font: FigFont): tuple[advance: float32, lineHeight: float32] =
@@ -37,34 +42,34 @@ proc monoMetrics*(font: FigFont): tuple[advance: float32, lineHeight: float32] =
   let adv = (px.typeface.getAdvance(Rune('M')) * px.scale)
   (adv, lineH / 2)
 
-proc ctrlKeyToNvimInput(button: Button): string =
-  case button
-  of KeyA: "<C-a>"
-  of KeyB: "<C-b>"
-  of KeyC: "<C-c>"
-  of KeyD: "<C-d>"
-  of KeyE: "<C-e>"
-  of KeyF: "<C-f>"
-  of KeyG: "<C-g>"
-  of KeyH: "<C-h>"
-  of KeyI: "<C-i>"
-  of KeyJ: "<C-j>"
-  of KeyK: "<C-k>"
-  of KeyL: "<C-l>"
-  of KeyM: "<C-m>"
-  of KeyN: "<C-n>"
-  of KeyO: "<C-o>"
-  of KeyP: "<C-p>"
-  of KeyQ: "<C-q>"
-  of KeyR: "<C-r>"
-  of KeyS: "<C-s>"
-  of KeyT: "<C-t>"
-  of KeyU: "<C-u>"
-  of KeyV: "<C-v>"
-  of KeyW: "<C-w>"
-  of KeyX: "<C-x>"
-  of KeyY: "<C-y>"
-  of KeyZ: "<C-z>"
+proc ctrlKeyToNvimInput(key: siwin.Key): string =
+  case key
+  of siwin.Key.a: "<C-a>"
+  of siwin.Key.b: "<C-b>"
+  of siwin.Key.c: "<C-c>"
+  of siwin.Key.d: "<C-d>"
+  of siwin.Key.e: "<C-e>"
+  of siwin.Key.f: "<C-f>"
+  of siwin.Key.g: "<C-g>"
+  of siwin.Key.h: "<C-h>"
+  of siwin.Key.i: "<C-i>"
+  of siwin.Key.j: "<C-j>"
+  of siwin.Key.k: "<C-k>"
+  of siwin.Key.l: "<C-l>"
+  of siwin.Key.m: "<C-m>"
+  of siwin.Key.n: "<C-n>"
+  of siwin.Key.o: "<C-o>"
+  of siwin.Key.p: "<C-p>"
+  of siwin.Key.q: "<C-q>"
+  of siwin.Key.r: "<C-r>"
+  of siwin.Key.s: "<C-s>"
+  of siwin.Key.t: "<C-t>"
+  of siwin.Key.u: "<C-u>"
+  of siwin.Key.v: "<C-v>"
+  of siwin.Key.w: "<C-w>"
+  of siwin.Key.x: "<C-x>"
+  of siwin.Key.y: "<C-y>"
+  of siwin.Key.z: "<C-z>"
   else: ""
 
 proc withAltModifier(input: string): string =
@@ -74,49 +79,112 @@ proc withAltModifier(input: string): string =
     return "<A-" & input[1 .. ^2] & ">"
   "<A-" & input & ">"
 
-proc buttonToTextInput(button: Button, shiftDown: bool): string =
-  if button >= KeyA and button <= KeyZ:
-    let base =
-      if shiftDown:
-        ord('A')
-      else:
-        ord('a')
-    return $char(base + (ord(button) - ord(KeyA)))
-  if button >= Key0 and button <= Key9:
-    return $char(ord('0') + (ord(button) - ord(Key0)))
-  case button
-  of KeySpace:
+proc keyToTextInput(key: siwin.Key, shiftDown: bool): string =
+  case key
+  of siwin.Key.a:
+    return (if shiftDown: "A" else: "a")
+  of siwin.Key.b:
+    return (if shiftDown: "B" else: "b")
+  of siwin.Key.c:
+    return (if shiftDown: "C" else: "c")
+  of siwin.Key.d:
+    return (if shiftDown: "D" else: "d")
+  of siwin.Key.e:
+    return (if shiftDown: "E" else: "e")
+  of siwin.Key.f:
+    return (if shiftDown: "F" else: "f")
+  of siwin.Key.g:
+    return (if shiftDown: "G" else: "g")
+  of siwin.Key.h:
+    return (if shiftDown: "H" else: "h")
+  of siwin.Key.i:
+    return (if shiftDown: "I" else: "i")
+  of siwin.Key.j:
+    return (if shiftDown: "J" else: "j")
+  of siwin.Key.k:
+    return (if shiftDown: "K" else: "k")
+  of siwin.Key.l:
+    return (if shiftDown: "L" else: "l")
+  of siwin.Key.m:
+    return (if shiftDown: "M" else: "m")
+  of siwin.Key.n:
+    return (if shiftDown: "N" else: "n")
+  of siwin.Key.o:
+    return (if shiftDown: "O" else: "o")
+  of siwin.Key.p:
+    return (if shiftDown: "P" else: "p")
+  of siwin.Key.q:
+    return (if shiftDown: "Q" else: "q")
+  of siwin.Key.r:
+    return (if shiftDown: "R" else: "r")
+  of siwin.Key.s:
+    return (if shiftDown: "S" else: "s")
+  of siwin.Key.t:
+    return (if shiftDown: "T" else: "t")
+  of siwin.Key.u:
+    return (if shiftDown: "U" else: "u")
+  of siwin.Key.v:
+    return (if shiftDown: "V" else: "v")
+  of siwin.Key.w:
+    return (if shiftDown: "W" else: "w")
+  of siwin.Key.x:
+    return (if shiftDown: "X" else: "x")
+  of siwin.Key.y:
+    return (if shiftDown: "Y" else: "y")
+  of siwin.Key.z:
+    return (if shiftDown: "Z" else: "z")
+  of siwin.Key.n0:
+    return "0"
+  of siwin.Key.n1:
+    return "1"
+  of siwin.Key.n2:
+    return "2"
+  of siwin.Key.n3:
+    return "3"
+  of siwin.Key.n4:
+    return "4"
+  of siwin.Key.n5:
+    return "5"
+  of siwin.Key.n6:
+    return "6"
+  of siwin.Key.n7:
+    return "7"
+  of siwin.Key.n8:
+    return "8"
+  of siwin.Key.n9:
+    return "9"
+  of siwin.Key.space:
     return " "
-  of KeyBacktick:
+  of siwin.Key.tilde:
     return (if shiftDown: "~" else: "`")
-  of KeyMinus:
+  of siwin.Key.minus:
     return (if shiftDown: "_" else: "-")
-  of KeyEqual:
+  of siwin.Key.equal:
     return (if shiftDown: "+" else: "=")
-  of KeyLeftBracket:
+  of siwin.Key.lbracket:
     return (if shiftDown: "{" else: "[")
-  of KeyRightBracket:
+  of siwin.Key.rbracket:
     return (if shiftDown: "}" else: "]")
-  of KeyBackslash:
+  of siwin.Key.backslash:
     return (if shiftDown: "|" else: "\\")
-  of KeySemicolon:
+  of siwin.Key.semicolon:
     return (if shiftDown: ":" else: ";")
-  of KeyApostrophe:
+  of siwin.Key.quote:
     return (if shiftDown: "\"" else: "'")
-  of KeyComma:
+  of siwin.Key.comma:
     return (if shiftDown: "<" else: ",")
-  of KeyPeriod:
+  of siwin.Key.dot:
     return (if shiftDown: ">" else: ".")
-  of KeySlash:
+  of siwin.Key.slash:
     return (if shiftDown: "?" else: "/")
   else:
     return ""
 
 proc keyToNvimInput*(
-    button: Button, ctrlDown: bool, altDown = false, shiftDown = false
+    key: siwin.Key, ctrlDown: bool, altDown = false, shiftDown = false
 ): string =
   if ctrlDown:
-    let ctrlInput = ctrlKeyToNvimInput(button)
+    let ctrlInput = ctrlKeyToNvimInput(key)
     if ctrlInput.len > 0:
       return
         if altDown:
@@ -124,25 +192,25 @@ proc keyToNvimInput*(
         else:
           ctrlInput
   let input =
-    case button
-    of KeyEnter: "<CR>"
-    of KeyBackspace: "<BS>"
-    of KeyTab: "<Tab>"
-    of KeyEscape: "<Esc>"
-    of KeyUp: "<Up>"
-    of KeyDown: "<Down>"
-    of KeyLeft: "<Left>"
-    of KeyRight: "<Right>"
-    of KeyDelete: "<Del>"
-    of KeyHome: "<Home>"
-    of KeyEnd: "<End>"
-    of KeyPageUp: "<PageUp>"
-    of KeyPageDown: "<PageDown>"
+    case key
+    of siwin.Key.enter: "<CR>"
+    of siwin.Key.backspace: "<BS>"
+    of siwin.Key.tab: "<Tab>"
+    of siwin.Key.escape: "<Esc>"
+    of siwin.Key.up: "<Up>"
+    of siwin.Key.down: "<Down>"
+    of siwin.Key.left: "<Left>"
+    of siwin.Key.right: "<Right>"
+    of siwin.Key.del: "<Del>"
+    of siwin.Key.home: "<Home>"
+    of siwin.Key.End: "<End>"
+    of siwin.Key.pageUp: "<PageUp>"
+    of siwin.Key.pageDown: "<PageDown>"
     else: ""
   if altDown:
     if input.len > 0:
       return withAltModifier(input)
-    let textInput = buttonToTextInput(button, shiftDown)
+    let textInput = keyToTextInput(key, shiftDown)
     if textInput.len > 0:
       return withAltModifier(textInput)
     return ""
@@ -153,47 +221,40 @@ proc runeToNvimInput*(r: Rune): string =
     return "<LT>"
   $r
 
-proc mouseButtonToNvimButton*(button: Button): string =
+proc mouseButtonToNvimButton*(button: siwin.MouseButton): string =
   case button
-  of MouseLeft: "left"
-  of MouseRight: "right"
-  of MouseMiddle: "middle"
-  of MouseButton4: "x1"
-  of MouseButton5: "x2"
-  else: ""
+  of siwin.MouseButton.left: "left"
+  of siwin.MouseButton.right: "right"
+  of siwin.MouseButton.middle: "middle"
+  of siwin.MouseButton.forward: "x1"
+  of siwin.MouseButton.backward: "x2"
 
-proc multiClickToNvimInput*(button: Button, row, col: int): string =
-  let clickCount =
-    case button
-    of DoubleClick: "2"
-    of TripleClick: "3"
-    of QuadrupleClick: "4"
-    else: ""
-  if clickCount.len == 0:
+proc multiClickToNvimInput*(clickCount, row, col: int): string =
+  if clickCount < 2 or clickCount > 4:
     return ""
-  "<" & clickCount & "-LeftMouse><" & $col & "," & $row & ">"
+  "<" & $clickCount & "-LeftMouse><" & $col & "," & $row & ">"
 
-proc mouseDragButtonToNvimButton*(buttons: ButtonView): string =
-  if buttons[MouseLeft]:
+proc mouseDragButtonToNvimButton*(buttons: MouseButtonView): string =
+  if siwin.MouseButton.left in buttons:
     return "left"
-  if buttons[MouseRight]:
+  if siwin.MouseButton.right in buttons:
     return "right"
-  if buttons[MouseMiddle]:
+  if siwin.MouseButton.middle in buttons:
     return "middle"
-  if buttons[MouseButton4]:
+  if siwin.MouseButton.forward in buttons:
     return "x1"
-  if buttons[MouseButton5]:
+  if siwin.MouseButton.backward in buttons:
     return "x2"
   ""
 
-proc mouseModifierFlags*(buttons: ButtonView): string =
-  if buttons[KeyLeftControl] or buttons[KeyRightControl]:
+proc mouseModifierFlags*(modifiers: ModifierView): string =
+  if siwin.ModifierKey.control in modifiers:
     result.add "C"
-  if buttons[KeyLeftShift] or buttons[KeyRightShift]:
+  if siwin.ModifierKey.shift in modifiers:
     result.add "S"
-  if buttons[KeyLeftAlt] or buttons[KeyRightAlt]:
+  if siwin.ModifierKey.alt in modifiers:
     result.add "A"
-  if buttons[KeyLeftSuper] or buttons[KeyRightSuper]:
+  if siwin.ModifierKey.system in modifiers:
     result.add "D"
 
 proc mouseGridCell*(
@@ -206,9 +267,12 @@ proc mouseGridCell*(
   result.col = min(cols - 1, max(0, rawCol))
   result.row = min(rows - 1, max(0, rawRow))
 
-proc mouseScrollActions*(delta: Vec2): seq[string] =
-  let x = delta.x
-  let y = delta.y
+proc mouseScrollActions*(
+    delta: Vec2, speedMultiplier = DefaultMouseScrollSpeedMultiplier
+): seq[string] =
+  let multiplier = max(speedMultiplier, 0.01'f32)
+  let x = delta.x * multiplier
+  let y = delta.y * multiplier
   let ySteps = max(0, int(abs(y) / MouseScrollUnit + 0.999'f32))
   let xSteps = max(0, int(abs(x) / MouseScrollUnit + 0.999'f32))
   for _ in 0 ..< ySteps:
@@ -216,28 +280,25 @@ proc mouseScrollActions*(delta: Vec2): seq[string] =
   for _ in 0 ..< xSteps:
     result.add(if x > 0: "left" else: "right")
 
-proc uiScaleDeltaForShortcut*(button: Button, buttons: ButtonView): float32 =
-  let cmdDown = buttons[KeyLeftSuper] or buttons[KeyRightSuper]
+proc uiScaleDeltaForShortcut*(key: siwin.Key, modifiers: ModifierView): float32 =
+  let cmdDown = siwin.ModifierKey.system in modifiers
   if not cmdDown:
     return 0.0'f32
-  case button
-  of KeyEqual:
+  case key
+  of siwin.Key.equal:
     UiScaleStep
-  of NumpadAdd:
+  of siwin.Key.add:
     UiScaleStep
-  of KeyMinus, NumpadSubtract:
+  of siwin.Key.minus, siwin.Key.subtract:
     -UiScaleStep
   else:
     0.0'f32
 
-proc cmdShortcutAction*(button: Button): CmdShortcutAction =
-  case button
-  of KeyC:
-    csaCopy
-  of KeyV:
-    csaPaste
-  else:
-    csaNone
+proc cmdShortcutAction*(key: siwin.Key): CmdShortcutAction =
+  case key
+  of siwin.Key.c: csaCopy
+  of siwin.Key.v: csaPaste
+  else: csaNone
 
 proc isVisualLikeMode*(mode: string): bool =
   if mode.len == 0:

@@ -1,7 +1,8 @@
-import std/unittest
+import std/[os, unittest]
 import neonim
 
 suite "neonim cli args":
+  const defaultScrollSpeedMultiplier = 1.0'f32
   test "parses short detach flag":
     let launch = parseLaunchArgs(@["-D", "./notes"])
     check launch.detach
@@ -35,3 +36,31 @@ suite "neonim cli args":
   test "keeps nvim -d arg unchanged":
     let cfg = guiConfigFromCli(@["-d", "file1", "file2"])
     check cfg.nvimArgs == @["-d", "file1", "file2"]
+
+  test "scroll speed multiplier reads env override":
+    let envKey = "NEONIM_SCROLL_SPEED_MULTIPLIER"
+    let hadEnv = existsEnv(envKey)
+    let oldValue = getEnv(envKey)
+    defer:
+      if hadEnv:
+        putEnv(envKey, oldValue)
+      else:
+        delEnv(envKey)
+    putEnv(envKey, "2.25")
+    check scrollSpeedMultiplierFromEnv() == 2.25'f32
+
+  test "scroll speed multiplier falls back on invalid env":
+    let envKey = "NEONIM_SCROLL_SPEED_MULTIPLIER"
+    let hadEnv = existsEnv(envKey)
+    let oldValue = getEnv(envKey)
+    defer:
+      if hadEnv:
+        putEnv(envKey, oldValue)
+      else:
+        delEnv(envKey)
+
+    putEnv(envKey, "oops")
+    check scrollSpeedMultiplierFromEnv() == defaultScrollSpeedMultiplier
+
+    putEnv(envKey, "0")
+    check scrollSpeedMultiplierFromEnv() == defaultScrollSpeedMultiplier

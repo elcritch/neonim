@@ -2,7 +2,7 @@
 
 # neonim
 
-Neovim GUI frontend written in Nim (Windy + FigDraw).
+Neovim GUI frontend written in Nim (Siwin + FigDraw).
 
 <img width="1444" height="944" alt="neonim-screenshot" src="https://github.com/user-attachments/assets/3c12d300-f8eb-4388-bbe8-937c4f90b9ec" />
 
@@ -44,6 +44,9 @@ bin/neonim --detach ~/code/my-project
 
 # Set FONT or HDI
 HDI=1.8 FONT="JetBrainsMonoNLNerdFont-Thin.ttf" bin/neonim ~/code/my-project
+
+# Increase/decrease mouse wheel scroll speed (default is 1.5)
+NEONIM_SCROLL_SPEED_MULTIPLIER=2.0 bin/neonim ~/code/my-project
 
 # Forward nvim args directly
 bin/neonim -u NONE --noplugin +':set number' ~/code/my-project

@@ -3,7 +3,7 @@ import std/[os, unicode, unittest, tables]
 import figdraw/commons
 import figdraw/common/fonttypes
 import figdraw/fignodes
-import figdraw/windyshim
+import figdraw/windowing/siwinshim as siwin
 
 import neonim/gui_backend
 import neonim/ui_linegrid
@@ -63,19 +63,25 @@ suite "gui backend renders":
     check abs(colonY - expectedY) < 0.001'f32
 
   test "mouse mappings and panel highlight overlay":
-    check mouseButtonToNvimButton(MouseLeft) == "left"
-    check mouseButtonToNvimButton(MouseRight) == "right"
-    check mouseButtonToNvimButton(KeyA) == ""
-    check multiClickToNvimInput(DoubleClick, row = 2, col = 7) == "<2-LeftMouse><7,2>"
-    check multiClickToNvimInput(TripleClick, row = 2, col = 7) == "<3-LeftMouse><7,2>"
-    check multiClickToNvimInput(MouseLeft, row = 2, col = 7) == ""
+    check mouseButtonToNvimButton(siwin.MouseButton.left) == "left"
+    check mouseButtonToNvimButton(siwin.MouseButton.right) == "right"
+    check mouseButtonToNvimButton(siwin.MouseButton.forward) == "x1"
+    check multiClickToNvimInput(2, row = 2, col = 7) == "<2-LeftMouse><7,2>"
+    check multiClickToNvimInput(3, row = 2, col = 7) == "<3-LeftMouse><7,2>"
+    check multiClickToNvimInput(1, row = 2, col = 7) == ""
 
-    check mouseDragButtonToNvimButton(ButtonView({MouseLeft})) == "left"
-    check mouseDragButtonToNvimButton(ButtonView({MouseMiddle})) == "middle"
-    check mouseDragButtonToNvimButton(ButtonView({})) == ""
+    check mouseDragButtonToNvimButton(MouseButtonView({siwin.MouseButton.left})) ==
+      "left"
+    check mouseDragButtonToNvimButton(MouseButtonView({siwin.MouseButton.middle})) ==
+      "middle"
+    check mouseDragButtonToNvimButton(MouseButtonView({})) == ""
 
-    check mouseModifierFlags(ButtonView({KeyLeftControl, KeyLeftShift})) == "CS"
-    check mouseModifierFlags(ButtonView({KeyRightAlt, KeyRightSuper})) == "AD"
+    check mouseModifierFlags(
+      ModifierView({siwin.ModifierKey.control, siwin.ModifierKey.shift})
+    ) == "CS"
+    check mouseModifierFlags(
+      ModifierView({siwin.ModifierKey.alt, siwin.ModifierKey.system})
+    ) == "AD"
 
     check mouseGridCell(vec2(0, 0), rows = 10, cols = 20, cellW = 8, cellH = 4) ==
       (row: 0, col: 0)
@@ -88,26 +94,39 @@ suite "gui backend renders":
     check mouseScrollActions(vec2(0, -10)) == @["down"]
     check mouseScrollActions(vec2(10, 0)) == @["left"]
     check mouseScrollActions(vec2(-10, 0)) == @["right"]
-    check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftSuper, KeyLeftShift})) ==
-      UiScaleStep
-    check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftSuper})) == UiScaleStep
-    check uiScaleDeltaForShortcut(KeyMinus, ButtonView({KeyRightSuper})) == -UiScaleStep
-    check uiScaleDeltaForShortcut(NumpadAdd, ButtonView({KeyLeftSuper})) == UiScaleStep
-    check uiScaleDeltaForShortcut(NumpadSubtract, ButtonView({KeyLeftSuper})) ==
-      -UiScaleStep
-    check uiScaleDeltaForShortcut(KeyEqual, ButtonView({})) == 0.0'f32
-    check uiScaleDeltaForShortcut(KeyEqual, ButtonView({KeyLeftShift})) == 0.0'f32
-    check uiScaleDeltaForShortcut(KeyMinus, ButtonView({})) == 0.0'f32
-    check keyToNvimInput(KeyF, ctrlDown = false, altDown = true) == "<A-f>"
-    check keyToNvimInput(KeyB, ctrlDown = false, altDown = true) == "<A-b>"
-    check keyToNvimInput(KeyLeft, ctrlDown = false, altDown = true) == "<A-Left>"
-    check keyToNvimInput(KeyEnter, ctrlDown = false, altDown = true) == "<A-CR>"
-    check keyToNvimInput(KeyB, ctrlDown = true, altDown = true) == "<A-C-b>"
+    check mouseScrollActions(vec2(0, 10), speedMultiplier = 1.0'f32) == @["up"]
+    check mouseScrollActions(vec2(0, 10), speedMultiplier = 3.0'f32) ==
+      @["up", "up", "up"]
+    check uiScaleDeltaForShortcut(
+      siwin.Key.equal, ModifierView({siwin.ModifierKey.system, siwin.ModifierKey.shift})
+    ) == UiScaleStep
+    check uiScaleDeltaForShortcut(
+      siwin.Key.equal, ModifierView({siwin.ModifierKey.system})
+    ) == UiScaleStep
+    check uiScaleDeltaForShortcut(
+      siwin.Key.minus, ModifierView({siwin.ModifierKey.system})
+    ) == -UiScaleStep
+    check uiScaleDeltaForShortcut(
+      siwin.Key.add, ModifierView({siwin.ModifierKey.system})
+    ) == UiScaleStep
+    check uiScaleDeltaForShortcut(
+      siwin.Key.subtract, ModifierView({siwin.ModifierKey.system})
+    ) == -UiScaleStep
+    check uiScaleDeltaForShortcut(siwin.Key.equal, ModifierView({})) == 0.0'f32
+    check uiScaleDeltaForShortcut(
+      siwin.Key.equal, ModifierView({siwin.ModifierKey.shift})
+    ) == 0.0'f32
+    check uiScaleDeltaForShortcut(siwin.Key.minus, ModifierView({})) == 0.0'f32
+    check keyToNvimInput(siwin.Key.f, ctrlDown = false, altDown = true) == "<A-f>"
+    check keyToNvimInput(siwin.Key.b, ctrlDown = false, altDown = true) == "<A-b>"
+    check keyToNvimInput(siwin.Key.left, ctrlDown = false, altDown = true) == "<A-Left>"
+    check keyToNvimInput(siwin.Key.enter, ctrlDown = false, altDown = true) == "<A-CR>"
+    check keyToNvimInput(siwin.Key.b, ctrlDown = true, altDown = true) == "<A-C-b>"
     check runeToNvimInput(Rune('<')) == "<LT>"
     check runeToNvimInput(Rune('a')) == "a"
-    check cmdShortcutAction(KeyC) == csaCopy
-    check cmdShortcutAction(KeyV) == csaPaste
-    check cmdShortcutAction(KeyX) == csaNone
+    check cmdShortcutAction(siwin.Key.c) == csaCopy
+    check cmdShortcutAction(siwin.Key.v) == csaPaste
+    check cmdShortcutAction(siwin.Key.x) == csaNone
     check isVisualLikeMode("v")
     check isVisualLikeMode("V")
     check isVisualLikeMode($char(0x16))

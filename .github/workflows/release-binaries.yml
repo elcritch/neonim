@@ -101,7 +101,7 @@ jobs:
 
       - name: Install Deps
         run: |
-          atlas install --feature:windy --feature:sdl2
+          atlas install --feature:siwin --feature:sdl2
 
       - name: Build neonim
         run: |
