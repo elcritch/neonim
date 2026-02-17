@@ -10,11 +10,11 @@ import siwin/[clipboards, colorutils]
 import figdraw/windowing/siwinshim as siwin
 
 import figdraw/[commons, fignodes, figrender]
-import
-  ./neonim/
-    [types, rpc, nvim_client, ui_linegrid, input_buttons, gui_backend, modifier_state]
+import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend, modifier_state]
 
-const EmbeddedWindowIconPng = staticRead("../data/neonim-icon-128.png")
+const
+  EmbeddedWindowIconPng = staticRead("../data/neonim-icon-128.png")
+  NeonimWindowBackendName = "siwin"
 
 type GuiRuntime* = ref object
   config*: GuiConfig
@@ -27,7 +27,8 @@ type GuiRuntime* = ref object
   window*: siwin.Window
   renderer*: FigRenderer[siwin.SiwinRenderBackend]
   windowStarted: bool
-  buttonDown: ButtonView
+  mouseDown: MouseButtonView
+  modifiers: ModifierView
   lastScroll: Vec2
   client*: NeovimClient
   monoFont*: FigFont
@@ -249,8 +250,8 @@ proc pasteClipboard(runtime: GuiRuntime): bool =
     warn "paste shortcut failed", error = err.msg
     return false
 
-proc handleCmdShortcut(runtime: GuiRuntime, button: Button): bool =
-  case cmdShortcutAction(button)
+proc handleCmdShortcut(runtime: GuiRuntime, key: siwin.Key): bool =
+  case cmdShortcutAction(key)
   of csaCopy:
     runtime.state.clearPanelHighlight()
     discard runtime.copyVisualSelectionToClipboard()
@@ -313,16 +314,6 @@ proc trySetWindowIcon(window: siwin.Window) =
   except CatchableError as err:
     warn "failed to set window icon", path = iconPath, error = err.msg
 
-proc mouseModifierFlagsFromState(ctrlDown, shiftDown, altDown, cmdDown: bool): string =
-  if ctrlDown:
-    result.add "C"
-  if shiftDown:
-    result.add "S"
-  if altDown:
-    result.add "A"
-  if cmdDown:
-    result.add "D"
-
 proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
   let mousePos = vec2(
       ivec2(runtime.window.mouse.pos.x.int32, runtime.window.mouse.pos.y.int32)
@@ -335,58 +326,49 @@ proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
 proc sendMouseInput(runtime: GuiRuntime, button, action: string, row, col: int): bool =
   if button.len == 0:
     return false
-  let modsState = currentModifierState(runtime.buttonDown)
-  let mods = mouseModifierFlagsFromState(
-    modsState.ctrlDown, modsState.shiftDown, modsState.altDown, modsState.cmdDown
-  )
+  let mods = mouseModifierFlags(runtime.modifiers)
   runtime.state.setPanelHighlight(row, col)
   result = runtime.safeRequest(
     "nvim_input_mouse", rpcPackParams(button, action, mods, 0, row, col)
   )
 
-proc handleMouseButton(runtime: GuiRuntime, button: Button, action: string): bool =
-  let cell = runtime.mouseCell()
-  if action == "press":
-    let multiInput = multiClickToNvimInput(button, cell.row, cell.col)
-    if multiInput.len > 0:
-      runtime.state.setPanelHighlight(cell.row, cell.col)
-      return runtime.safeRequest("nvim_input", rpcPackParams(multiInput))
-
+proc handleMouseButton(
+    runtime: GuiRuntime, button: siwin.MouseButton, action: string
+): bool =
   let mouseButton = mouseButtonToNvimButton(button)
   if mouseButton.len == 0:
     return false
+  let cell = runtime.mouseCell()
   discard runtime.sendMouseInput(mouseButton, action, cell.row, cell.col)
   result = true
 
-proc handleButtonPress(runtime: GuiRuntime, button: Button) =
-  if runtime.handleMouseButton(button, "press"):
-    return
+proc handleMouseMultiClick(runtime: GuiRuntime, clickCount: int): bool =
+  let cell = runtime.mouseCell()
+  let multiInput = multiClickToNvimInput(clickCount, cell.row, cell.col)
+  if multiInput.len == 0:
+    return false
+  runtime.state.setPanelHighlight(cell.row, cell.col)
+  result = runtime.safeRequest("nvim_input", rpcPackParams(multiInput))
+
+proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView) =
   runtime.state.clearCommittedCmdline()
-  let mods = currentModifierState(runtime.buttonDown)
-  var shortcutMods: set[Button] = {}
-  if mods.cmdDown:
-    shortcutMods.incl KeyLeftSuper
-  if mods.shiftDown:
-    shortcutMods.incl KeyLeftShift
-  let uiDelta = uiScaleDeltaForShortcut(button, ButtonView(shortcutMods))
+  let mods = currentModifierState(modifiers)
+  let uiDelta = uiScaleDeltaForShortcut(key, modifiers)
   if uiDelta != 0.0'f32:
     runtime.state.clearPanelHighlight()
     discard runtime.adjustUiScale(uiDelta)
     return
-  if mods.cmdDown and runtime.handleCmdShortcut(button):
+  if mods.cmdDown and runtime.handleCmdShortcut(key):
     return
   runtime.state.clearPanelHighlight()
-  if button == KeyEnter and runtime.state.cmdlineActive:
+  if key == siwin.Key.enter and runtime.state.cmdlineActive:
     runtime.state.cmdlineCommitPending = true
-  if button == KeyEscape:
+  if key == siwin.Key.escape:
     runtime.state.cmdlineCommitPending = false
     runtime.state.cmdlineCommittedText = ""
-  let input = keyToNvimInput(button, mods.ctrlDown, mods.altDown, mods.shiftDown)
+  let input = keyToNvimInput(key, mods.ctrlDown, mods.altDown, mods.shiftDown)
   if input.len > 0:
     discard runtime.safeRequest("nvim_input", rpcPackParams(input))
-
-proc handleButtonRelease(runtime: GuiRuntime, button: Button) =
-  discard runtime.handleMouseButton(button, "release")
 
 proc adjustUiScale(runtime: GuiRuntime, delta: float32): bool =
   if delta == 0.0'f32:
@@ -500,7 +482,8 @@ proc initGuiRuntime*(
   let typefaceId = loadTypeface(config.fontTypeface, [config.defaultTypeface])
   result.monoFont = FigFont(typefaceId: typefaceId, size: config.fontSize)
   result.window = siwin.newSiwinWindow(size = size, fullscreen = false, title = title)
-  result.buttonDown = {}
+  result.mouseDown = {}
+  result.modifiers = {}
   result.lastScroll = vec2(0, 0)
   trySetWindowIcon(result.window)
 
@@ -553,7 +536,7 @@ proc initGuiRuntime*(
     runtime.state.needsRedraw = true
 
   runtime.window.eventsHandler.onMouseMove = proc(_: siwin.MouseMoveEvent) =
-    let dragButton = mouseDragButtonToNvimButton(runtime.buttonDown)
+    let dragButton = mouseDragButtonToNvimButton(runtime.mouseDown)
     if dragButton.len == 0:
       return
     let cell = runtime.mouseCell()
@@ -569,7 +552,7 @@ proc initGuiRuntime*(
       discard runtime.sendMouseInput("wheel", action, cell.row, cell.col)
 
   runtime.window.eventsHandler.onTextInput = proc(e: siwin.TextInputEvent) =
-    let mods = currentModifierState(runtime.buttonDown)
+    let mods = currentModifierState(runtime.modifiers)
     if mods.ctrlDown:
       return
     if mods.altDown:
@@ -583,30 +566,22 @@ proc initGuiRuntime*(
       discard runtime.safeRequest("nvim_input", rpcPackParams(s))
 
   runtime.window.eventsHandler.onKey = proc(e: siwin.KeyEvent) =
-    let (ok, button) = mapKey(e.key)
-    if not ok:
+    runtime.modifiers = e.modifiers
+    if not e.pressed:
       return
-    if e.pressed:
-      runtime.buttonDown.incl(button)
-      runtime.handleButtonPress(button)
-    else:
-      runtime.buttonDown.excl(button)
-      runtime.handleButtonRelease(button)
+    runtime.handleKeyPress(e.key, e.modifiers)
 
   runtime.window.eventsHandler.onMouseButton = proc(e: siwin.MouseButtonEvent) =
-    let (ok, button) = mapMouse(e.button)
-    if not ok:
-      return
     if e.pressed:
-      runtime.buttonDown.incl(button)
-      runtime.handleButtonPress(button)
+      runtime.mouseDown.incl(e.button)
+      discard runtime.handleMouseButton(e.button, "press")
     else:
-      runtime.buttonDown.excl(button)
-      runtime.handleButtonRelease(button)
+      runtime.mouseDown.excl(e.button)
+      discard runtime.handleMouseButton(e.button, "release")
 
   runtime.window.eventsHandler.onClick = proc(e: siwin.ClickEvent) =
     if e.double:
-      runtime.handleButtonPress(DoubleClick)
+      discard runtime.handleMouseMultiClick(2)
 
 proc runFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): bool =
   let runtime = initGuiRuntime(config, testCfg)

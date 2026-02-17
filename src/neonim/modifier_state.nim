@@ -1,16 +1,13 @@
-import ./input_buttons
+import figdraw/windowing/siwinshim as siwin
 
 type ModifierState* = tuple[ctrlDown, shiftDown, altDown, cmdDown: bool]
 
-proc modifierStateFromButtons*(buttons: ButtonView): ModifierState =
+proc modifierStateFromModifiers*(modifiers: set[siwin.ModifierKey]): ModifierState =
   (
-    ctrlDown:
-      buttonPressed(buttons, KeyLeftControl) or buttonPressed(buttons, KeyRightControl),
-    shiftDown:
-      buttonPressed(buttons, KeyLeftShift) or buttonPressed(buttons, KeyRightShift),
-    altDown: buttonPressed(buttons, KeyLeftAlt) or buttonPressed(buttons, KeyRightAlt),
-    cmdDown:
-      buttonPressed(buttons, KeyLeftSuper) or buttonPressed(buttons, KeyRightSuper),
+    ctrlDown: siwin.ModifierKey.control in modifiers,
+    shiftDown: siwin.ModifierKey.shift in modifiers,
+    altDown: siwin.ModifierKey.alt in modifiers,
+    cmdDown: siwin.ModifierKey.system in modifiers,
   )
 
 when defined(macosx):
@@ -46,7 +43,7 @@ when defined(macosx):
     state.cmdDown = (flags and CgCmdMask) != 0
     true
 
-proc currentModifierState*(buttons: ButtonView): ModifierState =
-  result = modifierStateFromButtons(buttons)
+proc currentModifierState*(modifiers: set[siwin.ModifierKey]): ModifierState =
+  result = modifierStateFromModifiers(modifiers)
   when defined(macosx):
     discard tryModifierStateFromCgEvent(result)
