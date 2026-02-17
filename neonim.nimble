@@ -10,11 +10,7 @@ bin           = @["neonim"]
 requires "nim >= 2.2.6"
 requires "msgpack4nim"
 requires "chronicles"
-requires "opengl"
-requires "pixie"
-
-requires "https://github.com/elcritch/figdraw >= 0.19.2"
-requires "https://github.com/elcritch/siwin#more-examples"
+requires "https://github.com/elcritch/figdraw[windy] >= 0.19.0"
 
 feature "references":
   requires "https://github.com/neovim/neovim"
