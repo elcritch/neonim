@@ -2,7 +2,7 @@ import std/[os, unittest]
 import neonim
 
 suite "neonim cli args":
-  const defaultScrollSpeedMultiplier = 1.5'f32
+  const defaultScrollSpeedMultiplier = 1.0'f32
   test "parses short detach flag":
     let launch = parseLaunchArgs(@["-D", "./notes"])
     check launch.detach
