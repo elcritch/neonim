@@ -5,7 +5,7 @@ import figdraw/common/fonttypes
 import figdraw/fignodes
 
 import neonim/gui_backend
-import neonim/windowing_backend
+import neonim/input_buttons
 import neonim/ui_linegrid
 
 var cachedFontId: FontId = FontId(0)

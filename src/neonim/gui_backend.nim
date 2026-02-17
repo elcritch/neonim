@@ -8,7 +8,7 @@ import pkg/pixie/fonts
 
 import figdraw/[commons, fignodes, figrender]
 import figdraw/common/fonttypes
-import ./windowing_backend
+import ./input_buttons
 
 when not UseMetalBackend:
   import figdraw/utils/glutils

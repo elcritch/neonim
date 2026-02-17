@@ -1,7 +1,7 @@
 import std/unittest
 
 import neonim/modifier_state
-import neonim/windowing_backend
+import neonim/input_buttons
 
 suite "modifier state":
   test "maps modifier buttons into modifier state":

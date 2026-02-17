@@ -1,4 +1,4 @@
-import ./windowing_backend
+import ./input_buttons
 
 type ModifierState* = tuple[ctrlDown, shiftDown, altDown, cmdDown: bool]
 
@@ -46,7 +46,7 @@ when defined(macosx):
     state.cmdDown = (flags and CgCmdMask) != 0
     true
 
-proc currentModifierState*(window: Window): ModifierState =
-  result = modifierStateFromButtons(window.buttonDown())
+proc currentModifierState*(buttons: ButtonView): ModifierState =
+  result = modifierStateFromButtons(buttons)
   when defined(macosx):
     discard tryModifierStateFromCgEvent(result)
