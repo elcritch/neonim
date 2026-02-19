@@ -511,7 +511,16 @@ proc initGuiRuntime*(
   let title = "Neonim"
   let typefaceId = loadTypeface(config.fontTypeface, [config.defaultTypeface])
   result.monoFont = FigFont(typefaceId: typefaceId, size: config.fontSize)
-  result.window = siwin.newSiwinWindow(size = size, fullscreen = false, title = title)
+  when UseVulkanBackend:
+    result.renderer =
+      newFigRenderer(atlasSize = 4096, backendState = siwin.SiwinRenderBackend())
+    result.window = siwin.newSiwinWindow(
+      result.renderer, size = size, fullscreen = false, title = title
+    )
+  else:
+    result.window = siwin.newSiwinWindow(size = size, fullscreen = false, title = title)
+    result.renderer =
+      newFigRenderer(atlasSize = 4096, backendState = siwin.SiwinRenderBackend())
   result.mouseDown = {}
   result.modifiers = {}
   result.lastScroll = vec2(0, 0)
@@ -524,8 +533,6 @@ proc initGuiRuntime*(
   if size != size.scaled():
     result.window.size = size.scaled()
 
-  result.renderer =
-    newFigRenderer(atlasSize = 4096, backendState = siwin.SiwinRenderBackend())
   result.renderer.setupBackend(result.window)
 
   result.client = newNeovimClient()
