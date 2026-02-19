@@ -281,8 +281,9 @@ proc mouseScrollActions*(
     result.add(if x > 0: "left" else: "right")
 
 proc uiScaleDeltaForShortcut*(key: siwin.Key, modifiers: ModifierView): float32 =
-  let cmdDown = siwin.ModifierKey.system in modifiers
-  if not cmdDown:
+  let zoomModifierDown =
+    (siwin.ModifierKey.system in modifiers) or (siwin.ModifierKey.control in modifiers)
+  if not zoomModifierDown:
     return 0.0'f32
   case key
   of siwin.Key.equal:

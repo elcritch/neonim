@@ -112,6 +112,22 @@ suite "gui backend renders":
     check uiScaleDeltaForShortcut(
       siwin.Key.subtract, ModifierView({siwin.ModifierKey.system})
     ) == -UiScaleStep
+    check uiScaleDeltaForShortcut(
+      siwin.Key.equal,
+      ModifierView({siwin.ModifierKey.control, siwin.ModifierKey.shift}),
+    ) == UiScaleStep
+    check uiScaleDeltaForShortcut(
+      siwin.Key.equal, ModifierView({siwin.ModifierKey.control})
+    ) == UiScaleStep
+    check uiScaleDeltaForShortcut(
+      siwin.Key.minus, ModifierView({siwin.ModifierKey.control})
+    ) == -UiScaleStep
+    check uiScaleDeltaForShortcut(
+      siwin.Key.add, ModifierView({siwin.ModifierKey.control})
+    ) == UiScaleStep
+    check uiScaleDeltaForShortcut(
+      siwin.Key.subtract, ModifierView({siwin.ModifierKey.control})
+    ) == -UiScaleStep
     check uiScaleDeltaForShortcut(siwin.Key.equal, ModifierView({})) == 0.0'f32
     check uiScaleDeltaForShortcut(
       siwin.Key.equal, ModifierView({siwin.ModifierKey.shift})
