@@ -17,11 +17,17 @@ import ./[ui_linegrid]
 
 const
   MouseScrollUnit = 10'f32
-  DefaultMouseScrollSpeedMultiplier* = 1.0'f32
   PanelHighlightFill* = rgba(248, 210, 120, 36).color
   UiScaleStep* = 0.05'f32
   UiScaleMin* = 0.5'f32
   UiScaleMax* = 4.0'f32
+
+when defined(macosx):
+  const
+    DefaultMouseScrollSpeedMultiplier* = 0.1'f32
+else:
+  const
+    DefaultMouseScrollSpeedMultiplier* = 1.0'f32
 
 type
   ModifierView* = set[siwin.ModifierKey]

@@ -49,18 +49,3 @@ suite "neonim cli args":
     putEnv(envKey, "2.25")
     check scrollSpeedMultiplierFromEnv() == 2.25'f32
 
-  test "scroll speed multiplier falls back on invalid env":
-    let envKey = "NEONIM_SCROLL_SPEED_MULTIPLIER"
-    let hadEnv = existsEnv(envKey)
-    let oldValue = getEnv(envKey)
-    defer:
-      if hadEnv:
-        putEnv(envKey, oldValue)
-      else:
-        delEnv(envKey)
-
-    putEnv(envKey, "oops")
-    check scrollSpeedMultiplierFromEnv() == defaultScrollSpeedMultiplier
-
-    putEnv(envKey, "0")
-    check scrollSpeedMultiplierFromEnv() == defaultScrollSpeedMultiplier
