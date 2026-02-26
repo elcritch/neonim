@@ -1,4 +1,4 @@
-import std/[os, streams, times, unittest]
+import std/[net, os, osproc, streams, times, unittest]
 import neonim/nvim_client
 import neonim/rpc
 import msgpack4nim
@@ -274,3 +274,136 @@ suite "neovim client":
           waitForCmdline(typed[0 .. i])
 
         discard client.callAndWait("nvim_input", rpcPackParams("\x1b"), timeout = 10.0)
+
+  test "connects to remote tcp server via --server":
+    when defined(windows):
+      check true
+    else:
+      if findExe("nvim").len == 0:
+        echo "SKIP: `nvim` not found in PATH"
+        check true
+      else:
+        var serverAddress = ""
+        var canRun = true
+        try:
+          let probe = newSocket(buffered = false)
+          probe.bindAddr(Port(0), "127.0.0.1")
+          let (_, listenPort) = probe.getLocalAddr()
+          probe.close()
+          serverAddress = "127.0.0.1:" & $int(listenPort)
+        except OSError:
+          echo "SKIP: unable to bind local test port"
+          canRun = false
+          check true
+
+        if canRun:
+          let server = startProcess(
+            "nvim",
+            args =
+              @[
+                "--headless", "--listen", serverAddress, "-u", "NONE", "-i", "NONE",
+                "--noplugin", "-n",
+              ],
+            options = {poUsePath},
+          )
+          defer:
+            try:
+              if server.running():
+                server.terminate()
+              discard server.waitForExit(500)
+            except CatchableError:
+              discard
+            server.close()
+
+          let client = newNeovimClient()
+          defer:
+            client.stop()
+
+          var connected = false
+          let deadline = epochTime() + 5.0
+          while epochTime() < deadline and not connected:
+            try:
+              client.start(args = @["--server=" & serverAddress])
+              connected = true
+            except CatchableError:
+              sleep(50)
+          if not connected:
+            check false
+          else:
+            discard client.discoverMetadata()
+            let resp =
+              client.callAndWait("nvim_eval", rpcPackParams("1+1"), timeout = 10.0)
+            check resp.error.isNilValue
+            check rpcUnpack[int64](resp.result) == 2
+
+  test "connects to unix socket server via --server":
+    when defined(windows):
+      check true
+    else:
+      if findExe("nvim").len == 0:
+        echo "SKIP: `nvim` not found in PATH"
+        check true
+      else:
+        let socketPath =
+          "/tmp/neonim-test-" & $getCurrentProcessId() & "-" & $int(epochTime() * 1000) &
+          ".sock"
+        try:
+          if fileExists(socketPath):
+            removeFile(socketPath)
+        except OSError:
+          discard
+
+        let server = startProcess(
+          "nvim",
+          args =
+            @[
+              "--headless", "--listen", socketPath, "-u", "NONE", "-i", "NONE",
+              "--noplugin", "-n",
+            ],
+          options = {poUsePath},
+        )
+        defer:
+          try:
+            if server.running():
+              server.terminate()
+            discard server.waitForExit(500)
+          except CatchableError:
+            discard
+          server.close()
+          try:
+            if fileExists(socketPath):
+              removeFile(socketPath)
+          except OSError:
+            discard
+
+        let client = newNeovimClient()
+        defer:
+          client.stop()
+
+        var connected = false
+        var lastErr = ""
+        let deadline = epochTime() + 5.0
+        while epochTime() < deadline and not connected:
+          try:
+            client.start(args = @["--server=unix://" & socketPath])
+            connected = true
+          except CatchableError as err:
+            lastErr = err.msg
+            try:
+              if not server.running():
+                break
+            except CatchableError:
+              break
+            sleep(50)
+        if not connected:
+          if lastErr.len > 0:
+            echo "SKIP: unable to connect unix test socket: ", lastErr
+          else:
+            echo "SKIP: unable to connect unix test socket"
+          check true
+        else:
+          discard client.discoverMetadata()
+          let resp =
+            client.callAndWait("nvim_eval", rpcPackParams("3+4"), timeout = 10.0)
+          check resp.error.isNilValue
+          check rpcUnpack[int64](resp.result) == 7

@@ -37,6 +37,11 @@ suite "neonim cli args":
     let cfg = guiConfigFromCli(@["-d", "file1", "file2"])
     check cfg.nvimArgs == @["-d", "file1", "file2"]
 
+  test "forwards --server args unchanged":
+    let args = @["--server", "127.0.0.1:6666", "+set number"]
+    let cfg = guiConfigFromCli(args)
+    check cfg.nvimArgs == args
+
   test "scroll speed multiplier reads env override":
     let envKey = "NEONIM_SCROLL_SPEED_MULTIPLIER"
     let hadEnv = existsEnv(envKey)
@@ -48,4 +53,3 @@ suite "neonim cli args":
         delEnv(envKey)
     putEnv(envKey, "2.25")
     check scrollSpeedMultiplierFromEnv() == 2.25'f32
-

@@ -50,6 +50,14 @@ NEONIM_SCROLL_SPEED_MULTIPLIER=2.0 bin/neonim ~/code/my-project
 
 # Forward nvim args directly
 bin/neonim -u NONE --noplugin +':set number' ~/code/my-project
+
+# Connect to an already-running nvim server (TCP)
+nvim --headless --listen 127.0.0.1:6666 -u NONE -i NONE --noplugin -n
+bin/neonim --server 127.0.0.1:6666
+
+# Connect to an already-running nvim server (Unix socket)
+nvim --headless --listen /tmp/neonim.sock -u NONE -i NONE --noplugin -n
+bin/neonim --server=unix:///tmp/neonim.sock
 ```
 
 ## Tests

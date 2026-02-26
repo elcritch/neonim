@@ -1,4 +1,6 @@
-import std/[os, osproc, streams, tables, times]
+import std/[os, osproc, streams, strutils, tables, times, net]
+when not defined(windows):
+  import std/nativesockets
 when not defined(windows):
   import std/posix
 import msgpack4nim
@@ -6,6 +8,23 @@ import msgpack4nim
 import ./rpc
 
 type
+  NeovimTransportKind = enum
+    ntkNone
+    ntkProcess
+    ntkSocket
+
+  NeovimServerAddressKind = enum
+    nsakTcp
+    nsakUnix
+
+  NeovimServerAddress = object
+    case kind: NeovimServerAddressKind
+    of nsakTcp:
+      host: string
+      port: Port
+    of nsakUnix:
+      path: string
+
   NeovimError* = object of CatchableError
 
   NeovimMetadata* = object
@@ -18,11 +37,14 @@ type
     proc(methodName: string, params: RpcParamsBuffer) {.gcsafe, closure.}
 
   NeovimClient* = ref object
+    transport: NeovimTransportKind
     process: Process
     inStream: Stream
+    rpcSocket: Socket
     when not defined(windows):
       outFd: FileHandle
       errFd: FileHandle
+      socketDisconnected: bool
 
     parser: RpcParser
     session: RpcSession
@@ -114,9 +136,118 @@ when not defined(windows):
     if fcntl(fd, F_SETFL, flags) < 0:
       raise newException(NeovimError, "fcntl(F_SETFL) failed")
 
+proc extractServerAddress(args: seq[string]): string =
+  var i = 0
+  while i < args.len:
+    let arg = args[i]
+    if arg == "--":
+      break
+    if arg == "--server":
+      if i + 1 >= args.len:
+        raise newException(NeovimError, "--server requires an address")
+      return args[i + 1]
+    if arg.startsWith("--server="):
+      return arg["--server=".len .. ^1]
+    inc i
+
+proc parseTcpServerAddress(serverAddress: string): tuple[host: string, port: Port] =
+  var value = serverAddress.strip()
+  if value.startsWith("tcp://"):
+    value = value[6 .. ^1]
+  if value.len == 0:
+    raise newException(NeovimError, "invalid --server address: empty value")
+
+  var host = ""
+  var portText = ""
+  if value[0] == '[':
+    let endBracket = value.find(']')
+    if endBracket <= 0 or endBracket + 2 > value.high or value[endBracket + 1] != ':':
+      raise newException(NeovimError, "invalid --server address, expected [host]:port")
+    host = value[1 ..< endBracket]
+    portText = value[endBracket + 2 .. ^1]
+  else:
+    let splitAt = value.rfind(':')
+    if splitAt <= 0 or splitAt >= value.high:
+      raise newException(NeovimError, "invalid --server address, expected host:port")
+    host = value[0 ..< splitAt]
+    portText = value[splitAt + 1 .. ^1]
+
+  if host.len == 0 or portText.len == 0:
+    raise newException(NeovimError, "invalid --server address, expected host:port")
+  try:
+    let parsedPort = parseInt(portText)
+    if parsedPort <= 0 or parsedPort > 65535:
+      raise
+        newException(NeovimError, "invalid --server port, must be in range 1..65535")
+    result = (host, Port(parsedPort))
+  except ValueError:
+    raise newException(NeovimError, "invalid --server port: " & portText)
+
+proc parseServerAddress(serverAddress: string): NeovimServerAddress =
+  var value = serverAddress.strip()
+  if value.len == 0:
+    raise newException(NeovimError, "invalid --server address: empty value")
+
+  if value.startsWith("unix://"):
+    let path = value["unix://".len .. ^1]
+    if path.len == 0:
+      raise newException(NeovimError, "invalid --server unix path: empty value")
+    when defined(windows):
+      raise newException(
+        NeovimError, "unix socket addresses are not supported on this platform"
+      )
+    else:
+      return NeovimServerAddress(kind: nsakUnix, path: path)
+
+  if value.startsWith("tcp://") or value.contains(":"):
+    let (host, port) = parseTcpServerAddress(value)
+    return NeovimServerAddress(kind: nsakTcp, host: host, port: port)
+
+  when defined(windows):
+    raise newException(NeovimError, "invalid --server address, expected host:port")
+  else:
+    return NeovimServerAddress(kind: nsakUnix, path: value)
+
+proc initRpcState(client: NeovimClient) =
+  client.parser = initRpcParser()
+  client.session = initRpcSession()
+  client.responses = initTable[uint64, RpcMessage]()
+  client.notifications = @[]
+  when not defined(windows):
+    client.socketDisconnected = false
+
 proc start*(client: NeovimClient, nvimCmd = "nvim", args: seq[string] = @[]) =
-  if client.process != nil:
+  if client.transport != ntkNone:
     raise newException(NeovimError, "client already started")
+
+  client.initRpcState()
+  let serverAddress = extractServerAddress(args)
+  if serverAddress.len > 0:
+    let server = parseServerAddress(serverAddress)
+    case server.kind
+    of nsakTcp:
+      client.rpcSocket = dial(server.host, server.port, buffered = false)
+    of nsakUnix:
+      when defined(windows):
+        raise newException(
+          NeovimError, "unix socket addresses are not supported on this platform"
+        )
+      else:
+        let rawSocket = createNativeSocket(AF_UNIX.cint, SOCK_STREAM.cint, 0)
+        if rawSocket == osInvalidSocket:
+          raiseOSError(osLastError())
+        client.rpcSocket = newSocket(
+          rawSocket,
+          domain = AF_UNIX,
+          sockType = SOCK_STREAM,
+          protocol = IPPROTO_TCP,
+          buffered = false,
+        )
+        client.rpcSocket.connectUnix(server.path)
+    when not defined(windows):
+      setNonBlocking(cast[FileHandle](client.rpcSocket.getFd()))
+    client.transport = ntkSocket
+    return
 
   let fullArgs = @["--embed"] & args
   client.process = startProcess(nvimCmd, args = fullArgs, options = {poUsePath})
@@ -126,38 +257,56 @@ proc start*(client: NeovimClient, nvimCmd = "nvim", args: seq[string] = @[]) =
     client.errFd = client.process.errorHandle()
     setNonBlocking(client.outFd)
     setNonBlocking(client.errFd)
-
-  client.parser = initRpcParser()
-  client.session = initRpcSession()
-  client.responses = initTable[uint64, RpcMessage]()
-  client.notifications = @[]
+  client.transport = ntkProcess
 
 proc poll*(client: NeovimClient)
 
 proc stop*(client: NeovimClient) =
-  if client.isNil or client.process.isNil:
+  if client.isNil:
     return
-  try:
-    client.process.terminate()
-  except CatchableError:
-    discard
-  try:
-    discard client.process.waitForExit(200)
-  except CatchableError:
-    discard
-  try:
-    client.process.close()
-  except CatchableError:
-    discard
+  if client.transport == ntkProcess and not client.process.isNil:
+    try:
+      client.process.terminate()
+    except CatchableError:
+      discard
+    try:
+      discard client.process.waitForExit(200)
+    except CatchableError:
+      discard
+    try:
+      client.process.close()
+    except CatchableError:
+      discard
+  if client.transport == ntkSocket and not client.rpcSocket.isNil:
+    try:
+      client.rpcSocket.close()
+    except CatchableError:
+      discard
   client.process = nil
+  client.inStream = nil
+  client.rpcSocket = nil
+  client.transport = ntkNone
+  when not defined(windows):
+    client.socketDisconnected = true
 
 proc isRunning*(client: NeovimClient): bool =
-  if client.isNil or client.process.isNil:
+  if client.isNil:
     return false
-  try:
-    return client.process.running()
-  except CatchableError:
+  case client.transport
+  of ntkNone:
     return false
+  of ntkProcess:
+    if client.process.isNil:
+      return false
+    try:
+      return client.process.running()
+    except CatchableError:
+      return false
+  of ntkSocket:
+    when defined(windows):
+      return not client.rpcSocket.isNil
+    else:
+      return (not client.rpcSocket.isNil) and (not client.socketDisconnected)
 
 proc waitForExit*(client: NeovimClient, timeout = 2.0): bool =
   let startTime = epochTime()
@@ -177,8 +326,16 @@ proc takeNotifications*(client: NeovimClient): seq[RpcMessage] =
   client.notifications.setLen(0)
 
 proc sendRaw(client: NeovimClient, data: string) =
-  client.inStream.write(data)
-  client.inStream.flush()
+  case client.transport
+  of ntkProcess:
+    client.inStream.write(data)
+    client.inStream.flush()
+  of ntkSocket:
+    if client.rpcSocket.isNil:
+      raise newException(NeovimError, "nvim server socket is not connected")
+    client.rpcSocket.send(data)
+  of ntkNone:
+    raise newException(NeovimError, "neovim client is not started")
 
 proc request*(
     client: NeovimClient, methodName: string, params: RpcParamsBuffer
@@ -208,38 +365,77 @@ when not defined(windows):
         return
       raise newException(NeovimError, "read() failed: errno=" & $e)
 
+  proc readAvailableSocket(socket: Socket, disconnected: var bool): string =
+    while true:
+      var buf = newString(16 * 1024)
+      let n = socket.recv(addr buf[0], buf.len)
+      if n > 0:
+        buf.setLen(n)
+        result.add(buf)
+        continue
+      if n == 0:
+        disconnected = true
+        return
+      let e = getSocketError(socket).int32
+      if e == EAGAIN or e == EWOULDBLOCK:
+        return
+      raise newException(NeovimError, "socket recv() failed: errno=" & $e)
+
+proc handleIncomingData(client: NeovimClient, data: string) =
+  if data.len == 0:
+    return
+  for msg in client.parser.feedRecovering(data):
+    case msg.kind
+    of rmResponse:
+      client.responses[msg.msgid] = msg
+      var session = client.session
+      discard session.completeRequest(msg.msgid)
+      client.session = session
+    of rmNotification:
+      client.notifications.add msg
+      if client.onNotification != nil:
+        client.onNotification(msg.methodName, msg.params)
+    of rmRequest:
+      discard
+
 proc poll*(client: NeovimClient) =
   when defined(windows):
     discard
   else:
-    let data = readAvailable(client.outFd)
-    if data.len > 0:
-      for msg in client.parser.feedRecovering(data):
-        case msg.kind
-        of rmResponse:
-          client.responses[msg.msgid] = msg
-          var session = client.session
-          discard session.completeRequest(msg.msgid)
-          client.session = session
-        of rmNotification:
-          client.notifications.add msg
-          if client.onNotification != nil:
-            client.onNotification(msg.methodName, msg.params)
-        of rmRequest:
-          discard
-    discard readAvailable(client.errFd) # drain to avoid blocking the child
+    case client.transport
+    of ntkProcess:
+      client.handleIncomingData(readAvailable(client.outFd))
+      discard readAvailable(client.errFd) # drain to avoid blocking the child
+    of ntkSocket:
+      if not client.rpcSocket.isNil and not client.socketDisconnected:
+        client.handleIncomingData(
+          readAvailableSocket(client.rpcSocket, client.socketDisconnected)
+        )
+    of ntkNone:
+      discard
 
 proc waitResponse*(client: NeovimClient, msgid: uint64, timeout = 2.0): RpcMessage =
   let startTime = epochTime()
   while true:
-    if client.process != nil:
-      try:
-        if not client.process.running():
+    case client.transport
+    of ntkProcess:
+      if client.process != nil:
+        try:
+          if not client.process.running():
+            raise newException(
+              NeovimError, "nvim exited while waiting for response: " & $msgid
+            )
+        except CatchableError:
+          discard
+    of ntkSocket:
+      when not defined(windows):
+        if client.socketDisconnected:
           raise newException(
-            NeovimError, "nvim exited while waiting for response: " & $msgid
+            NeovimError,
+            "nvim server disconnected while waiting for response: " & $msgid,
           )
-      except CatchableError:
-        discard
+    of ntkNone:
+      raise newException(NeovimError, "neovim client is not started")
     client.poll()
     if client.responses.hasKey(msgid):
       result = client.responses[msgid]
