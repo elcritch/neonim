@@ -71,8 +71,8 @@ nim test
 
 ## Input Notes
 
-- `Cmd +` / `Cmd =` / `Cmd -` adjusts UI scale.
-- `Cmd-c` copies the current visual selection to the system clipboard; `Cmd-v` pastes system clipboard text.
+- `Cmd +` / `Cmd =` / `Cmd -` (macOS) and `Ctrl +` / `Ctrl =` / `Ctrl -` (Linux/Windows) adjust UI scale.
+- `Cmd-c` / `Cmd-v` (macOS) and `Ctrl-c` / `Ctrl-v` (Linux/Windows) copy and paste via the system clipboard.
 - `Alt-f` and `Alt-b` are sent as Meta keys (`<A-f>`, `<A-b>`), so terminal word-jump works.
 - Double/triple/quadruple left-click send `<2-LeftMouse>`, `<3-LeftMouse>`, `<4-LeftMouse>`.
 

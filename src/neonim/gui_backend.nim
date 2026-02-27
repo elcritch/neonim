@@ -308,6 +308,12 @@ proc cmdShortcutAction*(key: siwin.Key): CmdShortcutAction =
   of siwin.Key.v: csaPaste
   else: csaNone
 
+proc clipboardShortcutModifierDown*(modifiers: ModifierView): bool =
+  when defined(macosx):
+    siwin.ModifierKey.system in modifiers
+  else:
+    siwin.ModifierKey.control in modifiers
+
 proc isVisualLikeMode*(mode: string): bool =
   if mode.len == 0:
     return false

@@ -147,6 +147,12 @@ suite "gui backend renders":
     check cmdShortcutAction(siwin.Key.c) == csaCopy
     check cmdShortcutAction(siwin.Key.v) == csaPaste
     check cmdShortcutAction(siwin.Key.x) == csaNone
+    when defined(macosx):
+      check clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.system}))
+      check not clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.control}))
+    else:
+      check clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.control}))
+      check not clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.system}))
     check isVisualLikeMode("v")
     check isVisualLikeMode("V")
     check isVisualLikeMode($char(0x16))

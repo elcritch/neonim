@@ -381,13 +381,12 @@ proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView
   let ctrlDown = siwin.ModifierKey.control in modifiers
   let shiftDown = siwin.ModifierKey.shift in modifiers
   let altDown = siwin.ModifierKey.alt in modifiers
-  let cmdDown = siwin.ModifierKey.system in modifiers
   let uiDelta = uiScaleDeltaForShortcut(key, modifiers)
   if uiDelta != 0.0'f32:
     runtime.state.clearPanelHighlight()
     discard runtime.adjustUiScale(uiDelta)
     return
-  if cmdDown and runtime.handleCmdShortcut(key):
+  if clipboardShortcutModifierDown(modifiers) and runtime.handleCmdShortcut(key):
     return
   runtime.state.clearPanelHighlight()
   if key == siwin.Key.enter and runtime.state.cmdlineActive:
