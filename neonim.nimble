@@ -10,7 +10,7 @@ bin           = @["neonim"]
 requires "nim >= 2.2.6"
 requires "msgpack4nim"
 requires "chronicles"
-requires "https://github.com/elcritch/figdraw[siwin]#impl-proper-wayland-scaling"
+requires "https://github.com/elcritch/figdraw[siwin] >= 0.21.1"
 
 feature "references":
   requires "https://github.com/neovim/neovim"

@@ -40,7 +40,8 @@ suite "gui backend renders":
     var foundCmdlineBg = false
     if 1.ZLevel in renders.layers:
       for node in renders.layers[1.ZLevel].nodes:
-        if node.kind == nkRectangle and node.fill == state.colors.bg:
+        if node.kind == nkRectangle and node.fill.kind == flColor and
+            node.fill.color == rgba(state.colors.bg):
           let expectedBgY = 2 * cellH * (rows - 1).float32
           if abs(node.screenBox.y - expectedBgY) < 0.001'f32 and
               abs(node.screenBox.h - (2 * cellH)) < 0.001'f32:
@@ -52,7 +53,8 @@ suite "gui backend renders":
               colonY = node.screenBox.y
               colonColorOk =
                 node.textLayout.spanColors.len == 1 and
-                node.textLayout.spanColors[0] == state.colors.fg
+                node.textLayout.spanColors[0].kind == flColor and
+                node.textLayout.spanColors[0].color == rgba(state.colors.fg)
               break
         if foundColon:
           break
@@ -94,6 +96,8 @@ suite "gui backend renders":
     check mouseScrollActions(vec2(0, -10)) == @["down"]
     check mouseScrollActions(vec2(10, 0)) == @["left"]
     check mouseScrollActions(vec2(-10, 0)) == @["right"]
+    check mouseScrollActions(vec2(0, 10), invertDirection = true) == @["down"]
+    check mouseScrollActions(vec2(10, 0), invertDirection = true) == @["right"]
     check mouseScrollActions(vec2(0, 10), speedMultiplier = 1.0'f32) == @["up"]
     check mouseScrollActions(vec2(0, 10), speedMultiplier = 3.0'f32) ==
       @["up", "up", "up"]
@@ -165,7 +169,8 @@ suite "gui backend renders":
     var foundPanel = false
     if 1.ZLevel in renders.layers:
       for node in renders.layers[1.ZLevel].nodes:
-        if node.kind == nkRectangle and node.fill == PanelHighlightFill:
+        if node.kind == nkRectangle and node.fill.kind == flColor and
+            node.fill.color == rgba(PanelHighlightFill):
           foundPanel =
             abs(node.screenBox.x - (3 * cellW)) < 0.001'f32 and
             abs(node.screenBox.w - (5 * cellW)) < 0.001'f32 and
@@ -194,7 +199,8 @@ suite "gui backend renders":
     var foundPanel = false
     if 1.ZLevel in renders.layers:
       for node in renders.layers[1.ZLevel].nodes:
-        if node.kind == nkRectangle and node.fill == PanelHighlightFill:
+        if node.kind == nkRectangle and node.fill.kind == flColor and
+            node.fill.color == rgba(PanelHighlightFill):
           foundPanel =
             abs(node.screenBox.x - (7 * cellW)) < 0.001'f32 and
             abs(node.screenBox.w - (13 * cellW)) < 0.001'f32 and

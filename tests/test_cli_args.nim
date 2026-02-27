@@ -53,3 +53,27 @@ suite "neonim cli args":
         delEnv(envKey)
     putEnv(envKey, "2.25")
     check scrollSpeedMultiplierFromEnv() == 2.25'f32
+
+  test "scroll invert reads env true value":
+    let envKey = "NEONIM_SCROLL_INVERT"
+    let hadEnv = existsEnv(envKey)
+    let oldValue = getEnv(envKey)
+    defer:
+      if hadEnv:
+        putEnv(envKey, oldValue)
+      else:
+        delEnv(envKey)
+    putEnv(envKey, "true")
+    check scrollDirectionInvertedFromEnv()
+
+  test "scroll invert reads env false value":
+    let envKey = "NEONIM_SCROLL_INVERT"
+    let hadEnv = existsEnv(envKey)
+    let oldValue = getEnv(envKey)
+    defer:
+      if hadEnv:
+        putEnv(envKey, oldValue)
+      else:
+        delEnv(envKey)
+    putEnv(envKey, "0")
+    check not scrollDirectionInvertedFromEnv()

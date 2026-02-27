@@ -35,6 +35,7 @@ type GuiRuntime* = ref object
   cellW*: float32
   cellH*: float32
   scrollSpeedMultiplier*: float32
+  scrollDirectionInverted*: bool
   iconRetriedAfterFirstStep: bool
   state*: LineGridState
   hl*: HlState
@@ -493,6 +494,20 @@ proc scrollSpeedMultiplierFromEnv*(): float32 =
     warn "invalid scroll speed multiplier, must be numeric", env = EnvKey, value = raw
   DefaultMouseScrollSpeedMultiplier
 
+proc scrollDirectionInvertedFromEnv*(): bool =
+  const EnvKey = "NEONIM_SCROLL_INVERT"
+  let raw = getEnv(EnvKey)
+  if raw.len == 0:
+    return false
+  case raw.strip().toLowerAscii()
+  of "1", "true", "yes", "on":
+    true
+  of "0", "false", "no", "off":
+    false
+  else:
+    warn "invalid scroll invert flag, expected boolean", env = EnvKey, value = raw
+    false
+
 proc initGuiRuntime*(
     config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig()
 ): GuiRuntime =
@@ -505,6 +520,7 @@ proc initGuiRuntime*(
   result.testCfg = testCfg
   result.appRunning = true
   result.scrollSpeedMultiplier = scrollSpeedMultiplierFromEnv()
+  result.scrollDirectionInverted = scrollDirectionInvertedFromEnv()
   result.testStart = epochTime()
   result.figNodesDumpPath = getEnv("NEONIM_FIG_NODES_OUT")
   let size = ivec2(1000, 700)
@@ -581,7 +597,11 @@ proc initGuiRuntime*(
 
   runtime.window.eventsHandler.onScroll = proc(e: siwin.ScrollEvent) =
     runtime.lastScroll = vec2(e.deltaX.float32, e.delta.float32)
-    let actions = mouseScrollActions(runtime.lastScroll, runtime.scrollSpeedMultiplier)
+    let actions = mouseScrollActions(
+      runtime.lastScroll,
+      speedMultiplier = runtime.scrollSpeedMultiplier,
+      invertDirection = runtime.scrollDirectionInverted,
+    )
     if actions.len == 0:
       return
     let cell = runtime.mouseCell()

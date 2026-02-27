@@ -23,11 +23,9 @@ const
   UiScaleMax* = 4.0'f32
 
 when defined(macosx):
-  const
-    DefaultMouseScrollSpeedMultiplier* = 0.1'f32
+  const DefaultMouseScrollSpeedMultiplier* = 0.1'f32
 else:
-  const
-    DefaultMouseScrollSpeedMultiplier* = 1.0'f32
+  const DefaultMouseScrollSpeedMultiplier* = 1.0'f32
 
 type
   ModifierView* = set[siwin.ModifierKey]
@@ -274,11 +272,14 @@ proc mouseGridCell*(
   result.row = min(rows - 1, max(0, rawRow))
 
 proc mouseScrollActions*(
-    delta: Vec2, speedMultiplier = DefaultMouseScrollSpeedMultiplier
+    delta: Vec2,
+    speedMultiplier = DefaultMouseScrollSpeedMultiplier,
+    invertDirection = false,
 ): seq[string] =
   let multiplier = max(speedMultiplier, 0.01'f32)
-  let x = delta.x * multiplier
-  let y = delta.y * multiplier
+  let directionMultiplier = if invertDirection: -1.0'f32 else: 1.0'f32
+  let x = delta.x * multiplier * directionMultiplier
+  let y = delta.y * multiplier * directionMultiplier
   let ySteps = max(0, int(abs(y) / MouseScrollUnit + 0.999'f32))
   let xSteps = max(0, int(abs(x) / MouseScrollUnit + 0.999'f32))
   for _ in 0 ..< ySteps:
