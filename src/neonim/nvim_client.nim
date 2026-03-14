@@ -1,4 +1,5 @@
 import std/[os, osproc, streams, strutils, tables, times, net]
+import chronicles
 when not defined(windows):
   import std/nativesockets
 when not defined(windows):
@@ -325,6 +326,15 @@ proc takeNotifications*(client: NeovimClient): seq[RpcMessage] =
   result = client.notifications
   client.notifications.setLen(0)
 
+proc dispatchNotification*(client: NeovimClient, msg: RpcMessage) =
+  client.notifications.add msg
+  if client.onNotification == nil:
+    return
+  try:
+    client.onNotification(msg.methodName, msg.params)
+  except CatchableError as err:
+    warn "nvim notification handler failed", rpcMethod = msg.methodName, error = err.msg
+
 proc sendRaw(client: NeovimClient, data: string) =
   case client.transport
   of ntkProcess:
@@ -392,9 +402,7 @@ proc handleIncomingData(client: NeovimClient, data: string) =
       discard session.completeRequest(msg.msgid)
       client.session = session
     of rmNotification:
-      client.notifications.add msg
-      if client.onNotification != nil:
-        client.onNotification(msg.methodName, msg.params)
+      client.dispatchNotification(msg)
     of rmRequest:
       discard
 

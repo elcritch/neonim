@@ -114,6 +114,20 @@ proc parseRedrawCmdlineShows(params: RpcParamsBuffer): seq[string] =
       result.add leading & prompt & contentText
 
 suite "neovim client":
+  test "notification handler errors are logged and later notifications continue":
+    let client = newNeovimClient()
+    var calls = 0
+    client.onNotification = proc(methodName: string, params: RpcParamsBuffer) =
+      inc calls
+      if calls == 1:
+        raise newException(NeovimError, "boom")
+
+    client.dispatchNotification(newNotification("redraw", rpcPackParams()))
+    client.dispatchNotification(newNotification("flush", rpcPackParams()))
+
+    check calls == 2
+    check client.takeNotifications().len == 2
+
   test "basic text input":
     when defined(windows):
       check true
