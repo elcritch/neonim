@@ -1,5 +1,10 @@
 --nimcache:".nimcache/"
 
+--debugger:native
+--stacktrace:off
+--define:nimStackTraceOverride
+--define:libbacktraceUseSystemLibs
+
 when defined(macosx):
   switch("passC", "-Wno-incompatible-function-pointer-types")
 

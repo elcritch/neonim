@@ -3,6 +3,8 @@
 import std/[streams, os, osproc, strutils, times, unicode]
 import chronicles
 
+import libbacktrace
+
 import vmath
 import msgpack4nim
 import pkg/pixie
