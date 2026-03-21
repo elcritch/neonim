@@ -91,6 +91,10 @@ suite "gui backend renders":
       (row: 1, col: 9)
     check mouseGridCell(vec2(999, 999), rows = 10, cols = 20, cellW = 8, cellH = 4) ==
       (row: 9, col: 19)
+    check inputPosToLogical(vec2(120, 60), usesBackingPixels = false, inputScale = 2.0) ==
+      vec2(120, 60)
+    check inputPosToLogical(vec2(120, 60), usesBackingPixels = true, inputScale = 2.0) ==
+      vec2(60, 30)
 
     check mouseScrollActions(vec2(0, 10)) == @["up"]
     check mouseScrollActions(vec2(0, -10)) == @["down"]

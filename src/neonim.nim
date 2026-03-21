@@ -343,10 +343,11 @@ proc trySetWindowIcon(window: siwin.Window) =
     warn "failed to set window icon", path = iconPath, error = err.msg
 
 proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
-  let mousePos = vec2(
-      ivec2(runtime.window.mouse.pos.x.int32, runtime.window.mouse.pos.y.int32)
-    )
-    .descaled()
+  let mousePos = inputPosToLogical(
+    vec2(ivec2(runtime.window.mouse.pos.x.int32, runtime.window.mouse.pos.y.int32)),
+    runtime.window.inputUsesBackingPixels(),
+    runtime.window.inputDeviceScale(),
+  )
   result = mouseGridCell(
     mousePos, runtime.state.rows, runtime.state.cols, runtime.cellW, runtime.cellH
   )

@@ -90,6 +90,7 @@ suite "neovim msgpack rpc":
     var router = newRpcRouter()
     proc add(a: int, b: int): int {.rpc.} =
       a + b
+
     proc add(session: var RpcSession, a: int, b: int): RpcMessage {.rpcClient.}
 
     var session = initRpcSession()

@@ -261,6 +261,14 @@ proc mouseModifierFlags*(modifiers: ModifierView): string =
   if siwin.ModifierKey.system in modifiers:
     result.add "D"
 
+proc inputPosToLogical*(
+    inputPos: Vec2, usesBackingPixels: bool, inputScale: float32
+): Vec2 =
+  if not usesBackingPixels:
+    return inputPos
+  let scale = if inputScale > 0.0'f32: inputScale else: 1.0'f32
+  inputPos / scale
+
 proc mouseGridCell*(
     mousePos: Vec2, rows, cols: int, cellW, cellH: float32
 ): tuple[row, col: int] =
@@ -312,8 +320,7 @@ proc clipboardShortcutModifierDown*(modifiers: ModifierView): bool =
   when defined(macosx):
     siwin.ModifierKey.system in modifiers
   else:
-    (siwin.ModifierKey.control in modifiers) and
-      (siwin.ModifierKey.shift in modifiers)
+    (siwin.ModifierKey.control in modifiers) and (siwin.ModifierKey.shift in modifiers)
 
 proc isVisualLikeMode*(mode: string): bool =
   if mode.len == 0:
