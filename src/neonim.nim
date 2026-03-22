@@ -31,6 +31,7 @@ const
   TopBarNewTabWidth = 29.0'f32
   TopBarTextInset = 12.0'f32
   TopBarTextLift = 2.5'f32
+  TopBarInactiveBottomGap = 2.0'f32
 
 type
   LineGridStateRef = ref LineGridState
@@ -526,7 +527,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       childCount: 0,
       zlevel: z,
       screenBox: rect(0, barH - 1, logicalSize.x, 1),
-      fill: rgba(8, 12, 18, 62).color,
+      fill: rgba(8, 12, 18, 20).color,
     ),
   )
 
@@ -562,11 +563,17 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     let tab = runtime.tabs[idx]
     let isActive = idx == runtime.activeTab
     let isHover = idx == runtime.hoverTab
+    let visualBox =
+      if isActive:
+        box
+      else:
+        rect(box.x, box.y, box.w, max(1.0'f32, box.h - TopBarInactiveBottomGap))
     if isActive:
       activeTabBox = box
       hasActiveTab = true
     let tabTextY =
-      box.y + max(0.0'f32, (box.h - runtime.monoFont.size) * 0.5'f32) - TopBarTextLift
+      visualBox.y + max(0.0'f32, (visualBox.h - runtime.monoFont.size) * 0.5'f32) -
+      TopBarTextLift
     let tabFill =
       if isActive:
         linear(
@@ -696,7 +703,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         kind: nkRectangle,
         childCount: 0,
         zlevel: z,
-        screenBox: box,
+        screenBox: visualBox,
         fill: tabFill,
         corners: [8, 8, 0, 0],
         shadows: tabShadows,
@@ -709,7 +716,10 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         childCount: 0,
         zlevel: z,
         screenBox: rect(
-          box.x + tabTopStrokeInset, box.y, max(1, box.w - tabTopStrokeInset * 2), 1
+          visualBox.x + tabTopStrokeInset,
+          visualBox.y,
+          max(1, visualBox.w - tabTopStrokeInset * 2),
+          1,
         ),
         fill: tabStroke,
       ),
@@ -723,7 +733,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           childCount: 0,
           zlevel: z,
           screenBox: rect(box.x, box.y + box.h - 1, box.w, mergeH),
-          fill: rgba(227, 236, 248, 220).color,
+          fill: rgba(241, 247, 255, 244).color,
         ),
       )
     else:
@@ -733,7 +743,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           kind: nkRectangle,
           childCount: 0,
           zlevel: z,
-          screenBox: rect(box.x, box.y + box.h - 1, box.w, 1),
+          screenBox: rect(visualBox.x, visualBox.y + visualBox.h - 1, visualBox.w, 1),
           fill: rgba(12, 17, 24, 34).color,
         ),
       )
@@ -774,13 +784,19 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     ),
     RenderShadow(),
   ]
+  let plusBox = rect(
+    newTabRect.x,
+    newTabRect.y,
+    newTabRect.w,
+    max(1.0'f32, newTabRect.h - TopBarInactiveBottomGap),
+  )
   discard renders.addRoot(
     z,
     Fig(
       kind: nkRectangle,
       childCount: 0,
       zlevel: z,
-      screenBox: newTabRect,
+      screenBox: plusBox,
       fill: plusFill,
       corners: [6, 6, 0, 0],
       shadows: plusShadows,
@@ -793,9 +809,9 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       childCount: 0,
       zlevel: z,
       screenBox: rect(
-        newTabRect.x + buttonTopStrokeInset,
-        newTabRect.y,
-        max(1, newTabRect.w - buttonTopStrokeInset * 2),
+        plusBox.x + buttonTopStrokeInset,
+        plusBox.y,
+        max(1, plusBox.w - buttonTopStrokeInset * 2),
         1,
       ),
       fill: rgba(246, 250, 255, 98).color,
@@ -807,7 +823,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       kind: nkRectangle,
       childCount: 0,
       zlevel: z,
-      screenBox: rect(newTabRect.x, newTabRect.y + newTabRect.h - 1, newTabRect.w, 1),
+      screenBox: rect(plusBox.x, plusBox.y + plusBox.h - 1, plusBox.w, 1),
       fill: rgba(12, 17, 24, 36).color,
     ),
   )
@@ -816,8 +832,8 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     "+",
     runtime.monoFont,
     rgba(230, 238, 249, 250).color,
-    newTabRect.x + max(0.0'f32, (newTabRect.w - 10.0'f32) * 0.5'f32),
-    newTabRect.y + max(0.0'f32, (newTabRect.h - runtime.monoFont.size) * 0.5'f32) -
+    plusBox.x + max(0.0'f32, (plusBox.w - 10.0'f32) * 0.5'f32),
+    plusBox.y + max(0.0'f32, (plusBox.h - runtime.monoFont.size) * 0.5'f32) -
       TopBarTextLift,
     10.0'f32,
   )
@@ -834,7 +850,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           childCount: 0,
           zlevel: z,
           screenBox: rect(0, contentTopY, activeTabBox.x, separatorH),
-          fill: rgba(244, 248, 255, 122).color,
+          fill: rgba(246, 250, 255, 184).color,
         ),
       )
     let activeRight = activeTabBox.x + activeTabBox.w
@@ -847,7 +863,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           zlevel: z,
           screenBox:
             rect(activeRight, contentTopY, logicalSize.x - activeRight, separatorH),
-          fill: rgba(244, 248, 255, 122).color,
+          fill: rgba(246, 250, 255, 184).color,
         ),
       )
     discard renders.addRoot(
@@ -857,7 +873,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         childCount: 0,
         zlevel: z,
         screenBox: rect(activeTabBox.x, contentTopY, activeTabBox.w, separatorH),
-        fill: rgba(239, 247, 255, 228).color,
+        fill: rgba(246, 250, 255, 252).color,
       ),
     )
   else:
@@ -868,7 +884,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         childCount: 0,
         zlevel: z,
         screenBox: rect(0, contentTopY, logicalSize.x, separatorH),
-        fill: rgba(244, 248, 255, 122).color,
+        fill: rgba(246, 250, 255, 184).color,
       ),
     )
 
