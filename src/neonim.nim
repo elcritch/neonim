@@ -31,6 +31,10 @@ const
   TopBarTextInset = 12.0'f32
   TopBarTextLift = 2.5'f32
   TopBarInactiveBottomGap = 2.0'f32
+  TopBarTabCloseHitWidth = 16.0'f32
+  TopBarTabCloseGap = 6.0'f32
+  TopBarTabCloseGlyphWidth = 10.0'f32
+  TopBarTabCloseLift = 1.0'f32
   TopBarMacTrafficButtonSize = 12.0'f32
   TopBarMacTrafficButtonGap = 8.0'f32
   TopBarAppLabelSideSpaceCells = 3.0'f32
@@ -441,6 +445,41 @@ proc addProcessTab(
     warn "failed to create nvim tab", mainDir = mainDir, error = err.msg
     result = false
 
+proc closeTab(runtime: GuiRuntime, idx: int): bool =
+  if idx < 0 or idx >= runtime.tabs.len:
+    return false
+  let closing = runtime.tabs[idx]
+  if not closing.isNil and not closing.client.isNil:
+    closing.client.stop()
+  let wasActive = idx == runtime.activeTab
+  runtime.tabs.delete(idx)
+
+  if runtime.tabs.len == 0:
+    runtime.activeTab = -1
+    runtime.hoverTab = -1
+    runtime.client = nil
+    runtime.state = nil
+    runtime.hl = nil
+    runtime.appRunning = false
+    return true
+
+  if wasActive:
+    runtime.activeTab =
+      if idx > 0:
+        idx - 1
+      else:
+        0
+  elif idx < runtime.activeTab:
+    dec runtime.activeTab
+
+  runtime.hoverTab = -1
+  runtime.hoverNewTab = false
+  runtime.syncActiveAliases()
+  runtime.syncActiveTabDir(force = true)
+  if not runtime.state.isNil:
+    runtime.state.needsRedraw = true
+  result = true
+
 proc syncActiveTabDir(runtime: GuiRuntime, force = false) =
   let tab = runtime.activeTabRef()
   if tab.isNil or tab.client.isNil or (not tab.client.isRunning()):
@@ -493,7 +532,8 @@ proc tabStripStartX(runtime: GuiRuntime): float32 =
 proc tabWidthForLabel(runtime: GuiRuntime, label: string): float32 =
   let advance = max(1.0'f32, runtime.monoFont.size * 0.55'f32)
   let textW = runeCount(label).float32 * advance
-  let horizontalTextPadding = TopBarTextInset * 2
+  let horizontalTextPadding =
+    TopBarTextInset * 2 + TopBarTabCloseGap + TopBarTabCloseHitWidth
   min(TopBarTabMaxWidth, max(TopBarTabMinWidth, textW + horizontalTextPadding))
 
 proc tabRects(
@@ -516,16 +556,29 @@ proc tabRects(
 proc pointInRect(p: Vec2, r: Rect): bool =
   p.x >= r.x and p.x < (r.x + r.w) and p.y >= r.y and p.y < (r.y + r.h)
 
-proc topBarHit(runtime: GuiRuntime, mousePos: Vec2): tuple[tabIdx: int, newTab: bool] =
+proc tabCloseRect(box: Rect): Rect =
+  let h = max(12.0'f32, box.h - 8.0'f32)
+  rect(
+    box.x + box.w - TopBarTextInset - TopBarTabCloseHitWidth,
+    box.y + max(0.0'f32, (box.h - h) * 0.5'f32),
+    TopBarTabCloseHitWidth,
+    h,
+  )
+
+proc topBarHit(
+    runtime: GuiRuntime, mousePos: Vec2
+): tuple[tabIdx: int, newTab: bool, closeTabIdx: int] =
   let logicalWidth = runtime.window.logicalSize().x
   var newTabRect = rect(0, 0, 0, 0)
   let rects = runtime.tabRects(logicalWidth, newTabRect)
   for idx, r in rects:
+    if pointInRect(mousePos, tabCloseRect(r)):
+      return (-1, false, idx)
     if pointInRect(mousePos, r):
-      return (idx, false)
+      return (idx, false, -1)
   if pointInRect(mousePos, newTabRect):
-    return (-1, true)
-  (-1, false)
+    return (-1, true, -1)
+  (-1, false, -1)
 
 proc addSingleLineText(
     renders: var Renders,
@@ -706,6 +759,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     let tabTextY =
       visualBox.y + max(0.0'f32, (visualBox.h - runtime.monoFont.size) * 0.5'f32) -
       TopBarTextLift
+    let closeBox = tabCloseRect(visualBox)
     let tabFill =
       if isActive:
         linear(
@@ -888,7 +942,24 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       tabTextColor,
       box.x + textInset,
       tabTextY,
-      max(20, box.w - textInset * 2),
+      max(20, box.w - textInset * 2 - TopBarTabCloseGap - TopBarTabCloseHitWidth),
+    )
+    let closeColor =
+      if isActive:
+        runtime.tabShadeRgba(48, 60, 78, 210, 0.30'f32).color
+      elif isHover:
+        runtime.tabShadeRgba(225, 234, 246, 232, 0.72'f32).color
+      else:
+        runtime.tabShadeRgba(212, 224, 240, 212, 0.64'f32).color
+    renders.addSingleLineText(
+      z,
+      "x",
+      runtime.monoFont,
+      closeColor,
+      closeBox.x + max(0.0'f32, (closeBox.w - TopBarTabCloseGlyphWidth) * 0.5'f32),
+      closeBox.y + max(0.0'f32, (closeBox.h - runtime.monoFont.size) * 0.5'f32) -
+        TopBarTabCloseLift,
+      TopBarTabCloseGlyphWidth,
     )
 
   let plusFill =
@@ -1287,6 +1358,9 @@ proc handleTopBarClick(runtime: GuiRuntime, mousePos: Vec2): bool =
   if mousePos.y >= runtime.topBarHeight:
     return false
   let hit = runtime.topBarHit(mousePos)
+  if hit.closeTabIdx >= 0:
+    discard runtime.closeTab(hit.closeTabIdx)
+    return true
   if hit.newTab:
     discard runtime.addProcessTab(runtime.mainDirForNewTab())
     return true
