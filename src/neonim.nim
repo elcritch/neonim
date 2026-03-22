@@ -73,6 +73,10 @@ type
     scrollSpeedMultiplier*: float32
     scrollDirectionInverted*: bool
     iconRetriedAfterFirstStep: bool
+    tabColorEnabled: bool
+    tabColorR: int
+    tabColorG: int
+    tabColorB: int
     state*: LineGridStateRef
     hl*: HlStateRef
     frameIdle*: int
@@ -475,6 +479,24 @@ proc addSingleLineText(
     ),
   )
 
+proc clampByte(v: int): uint8 =
+  uint8(max(0, min(255, v)))
+
+proc mixByte(base, tint: int, amount: float32): uint8 =
+  let a = min(1.0'f32, max(0.0'f32, amount))
+  clampByte(int(round(base.float32 * (1.0'f32 - a) + tint.float32 * a)))
+
+proc tabToneRgba(runtime: GuiRuntime, r, g, b, a: int, tintAmount: float32): auto =
+  if runtime.tabColorEnabled:
+    rgba(
+      mixByte(r, runtime.tabColorR, tintAmount),
+      mixByte(g, runtime.tabColorG, tintAmount),
+      mixByte(b, runtime.tabColorB, tintAmount),
+      clampByte(a),
+    )
+  else:
+    rgba(clampByte(r), clampByte(g), clampByte(b), clampByte(a))
+
 proc offsetRendersY(renders: var Renders, yOffset: float32) =
   for _, list in renders.layers.mpairs:
     for i in 0 ..< list.nodes.len:
@@ -578,35 +600,35 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     let tabFill =
       if isActive:
         linear(
-          rgba(255, 255, 255, 244),
-          rgba(246, 250, 255, 234),
-          rgba(227, 236, 248, 220),
+          runtime.tabToneRgba(255, 255, 255, 244, 0.30'f32),
+          runtime.tabToneRgba(246, 250, 255, 234, 0.36'f32),
+          runtime.tabToneRgba(227, 236, 248, 220, 0.42'f32),
           axis = fgaY,
           midPos = 112'u8,
         )
       elif isHover:
         linear(
-          rgba(243, 249, 255, 178),
-          rgba(220, 231, 246, 152),
-          rgba(193, 207, 227, 136),
+          runtime.tabToneRgba(243, 249, 255, 178, 0.38'f32),
+          runtime.tabToneRgba(220, 231, 246, 152, 0.45'f32),
+          runtime.tabToneRgba(193, 207, 227, 136, 0.52'f32),
           axis = fgaY,
           midPos = 112'u8,
         )
       else:
         linear(
-          rgba(228, 238, 252, 136),
-          rgba(202, 215, 234, 116),
-          rgba(178, 194, 218, 100),
+          runtime.tabToneRgba(228, 238, 252, 136, 0.46'f32),
+          runtime.tabToneRgba(202, 215, 234, 116, 0.54'f32),
+          runtime.tabToneRgba(178, 194, 218, 100, 0.62'f32),
           axis = fgaY,
           midPos = 112'u8,
         )
     let tabStroke =
       if isActive:
-        rgba(255, 255, 255, 104).color
+        runtime.tabToneRgba(255, 255, 255, 104, 0.20'f32).color
       elif isHover:
-        rgba(244, 249, 255, 84).color
+        runtime.tabToneRgba(244, 249, 255, 84, 0.24'f32).color
       else:
-        rgba(236, 244, 255, 68).color
+        runtime.tabToneRgba(236, 244, 255, 68, 0.30'f32).color
     let tabTextColor =
       if isActive:
         rgba(34, 43, 54, 255).color
@@ -1378,6 +1400,42 @@ proc uiScaleFromEnv*(fallbackScale: float32): float32 =
     warn "invalid ui scale, must be numeric", env = EnvKey, value = raw
   fallbackScale
 
+proc tabColorFromEnv*(): tuple[enabled: bool, r, g, b: int] =
+  const EnvKey = "NEONIM_TAB_COLOR"
+  let raw = getEnv(EnvKey)
+  if raw.len == 0:
+    return (false, 0, 0, 0)
+
+  let trimmed = raw.strip()
+  if trimmed.len == 0:
+    return (false, 0, 0, 0)
+
+  var hex = trimmed
+  if hex.startsWith("#"):
+    hex = hex[1 .. ^1]
+  if hex.len == 6:
+    try:
+      let v = parseHexInt(hex)
+      return (true, (v shr 16) and 0xFF, (v shr 8) and 0xFF, v and 0xFF)
+    except ValueError:
+      discard
+
+  let parts = trimmed.split(',')
+  if parts.len == 3:
+    try:
+      let r = parts[0].strip().parseInt()
+      let g = parts[1].strip().parseInt()
+      let b = parts[2].strip().parseInt()
+      if r < 0 or r > 255 or g < 0 or g > 255 or b < 0 or b > 255:
+        warn "invalid tab color channel, expected 0..255", env = EnvKey, value = raw
+        return (false, 0, 0, 0)
+      return (true, r, g, b)
+    except ValueError:
+      discard
+
+  warn "invalid tab color, expected #RRGGBB or R,G,B", env = EnvKey, value = raw
+  (false, 0, 0, 0)
+
 proc initGuiRuntime*(
     config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig()
 ): GuiRuntime =
@@ -1391,6 +1449,11 @@ proc initGuiRuntime*(
   result.appRunning = true
   result.scrollSpeedMultiplier = scrollSpeedMultiplierFromEnv()
   result.scrollDirectionInverted = scrollDirectionInvertedFromEnv()
+  let tabColor = tabColorFromEnv()
+  result.tabColorEnabled = tabColor.enabled
+  result.tabColorR = tabColor.r
+  result.tabColorG = tabColor.g
+  result.tabColorB = tabColor.b
   result.testStart = epochTime()
   result.figNodesDumpPath = getEnv("NEONIM_FIG_NODES_OUT")
   let size = ivec2(1000, 700)
