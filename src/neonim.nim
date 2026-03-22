@@ -491,9 +491,9 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       zlevel: z,
       screenBox: rect(0, 0, logicalSize.x, barH),
       fill: linear(
-        rgba(74, 79, 88, 240),
-        rgba(47, 53, 64, 236),
-        rgba(32, 37, 46, 244),
+        rgba(88, 94, 106, 226),
+        rgba(68, 75, 88, 220),
+        rgba(52, 59, 72, 226),
         axis = fgaY,
         midPos = 100'u8,
       ),
@@ -504,7 +504,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           spread: 0,
           x: 0,
           y: -3,
-          fill: rgba(255, 255, 255, 34).color,
+          fill: rgba(255, 255, 255, 46).color,
         ),
         RenderShadow(
           style: InnerShadow,
@@ -512,7 +512,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           spread: 0,
           x: 0,
           y: 4,
-          fill: rgba(6, 9, 14, 100).color,
+          fill: rgba(10, 14, 22, 70).color,
         ),
         RenderShadow(),
         RenderShadow(),
@@ -526,7 +526,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       childCount: 0,
       zlevel: z,
       screenBox: rect(0, 0, logicalSize.x, barH * 0.46),
-      fill: linear(rgba(255, 255, 255, 40), rgba(255, 255, 255, 6), axis = fgaY),
+      fill: linear(rgba(255, 255, 255, 54), rgba(255, 255, 255, 10), axis = fgaY),
     ),
   )
   discard renders.addRoot(
@@ -536,7 +536,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       childCount: 0,
       zlevel: z,
       screenBox: rect(0, barH - 1, logicalSize.x, 1),
-      fill: rgba(8, 11, 16, 174).color,
+      fill: rgba(12, 17, 24, 116).color,
     ),
   )
 
@@ -573,35 +573,35 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     let tabFill =
       if isActive:
         linear(
-          rgba(254, 255, 255, 232),
-          rgba(236, 241, 248, 214),
-          rgba(205, 214, 228, 198),
+          rgba(255, 255, 255, 244),
+          rgba(246, 250, 255, 234),
+          rgba(227, 236, 248, 220),
           axis = fgaY,
           midPos = 112'u8,
         )
       elif isHover:
         linear(
-          rgba(230, 238, 251, 146),
-          rgba(197, 210, 229, 110),
-          rgba(169, 184, 207, 96),
+          rgba(243, 249, 255, 178),
+          rgba(220, 231, 246, 152),
+          rgba(193, 207, 227, 136),
           axis = fgaY,
           midPos = 112'u8,
         )
       else:
         linear(
-          rgba(212, 223, 241, 92),
-          rgba(176, 190, 213, 76),
-          rgba(150, 166, 192, 68),
+          rgba(228, 238, 252, 136),
+          rgba(202, 215, 234, 116),
+          rgba(178, 194, 218, 100),
           axis = fgaY,
           midPos = 112'u8,
         )
     let tabStroke =
       if isActive:
-        rgba(255, 255, 255, 124).color
+        rgba(255, 255, 255, 104).color
       elif isHover:
-        rgba(242, 248, 255, 96).color
+        rgba(244, 249, 255, 84).color
       else:
-        rgba(232, 240, 252, 66).color
+        rgba(236, 244, 255, 68).color
     let tabTextColor =
       if isActive:
         rgba(34, 43, 54, 255).color
@@ -616,7 +616,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: 2,
-            fill: rgba(0, 0, 0, 52).color,
+            fill: rgba(0, 0, 0, 26).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -624,7 +624,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: -3,
-            fill: rgba(255, 255, 255, 108).color,
+            fill: rgba(255, 255, 255, 118).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -632,7 +632,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: 3,
-            fill: rgba(10, 14, 20, 64).color,
+            fill: rgba(12, 17, 24, 28).color,
           ),
           RenderShadow(),
         ]
@@ -644,7 +644,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: 2,
-            fill: rgba(0, 0, 0, 44).color,
+            fill: rgba(0, 0, 0, 22).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -652,7 +652,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: -2,
-            fill: rgba(255, 255, 255, 78).color,
+            fill: rgba(255, 255, 255, 92).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -660,7 +660,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: 2,
-            fill: rgba(12, 16, 24, 54).color,
+            fill: rgba(12, 17, 24, 24).color,
           ),
           RenderShadow(),
         ]
@@ -672,7 +672,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: 2,
-            fill: rgba(0, 0, 0, 36).color,
+            fill: rgba(0, 0, 0, 18).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -680,7 +680,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: -2,
-            fill: rgba(255, 255, 255, 54).color,
+            fill: rgba(255, 255, 255, 72).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -688,7 +688,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: 2,
-            fill: rgba(12, 16, 24, 46).color,
+            fill: rgba(12, 17, 24, 18).color,
           ),
           RenderShadow(),
         ]
@@ -722,7 +722,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         childCount: 0,
         zlevel: z,
         screenBox: rect(box.x, box.y + box.h - 1, box.w, 1),
-        fill: rgba(10, 14, 20, 80).color,
+        fill: rgba(12, 17, 24, 34).color,
       ),
     )
     renders.addSingleLineText(
@@ -737,12 +737,12 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
 
   let plusFill =
     if runtime.hoverNewTab:
-      linear(rgba(233, 241, 252, 146), rgba(186, 200, 222, 124), axis = fgaY)
+      linear(rgba(244, 250, 255, 176), rgba(204, 218, 237, 154), axis = fgaY)
     else:
-      linear(rgba(212, 223, 241, 96), rgba(160, 176, 201, 78), axis = fgaY)
+      linear(rgba(230, 240, 253, 140), rgba(183, 199, 222, 120), axis = fgaY)
   let plusShadows = [
     RenderShadow(
-      style: DropShadow, blur: 7, spread: 0, x: 0, y: 2, fill: rgba(0, 0, 0, 40).color
+      style: DropShadow, blur: 7, spread: 0, x: 0, y: 2, fill: rgba(0, 0, 0, 22).color
     ),
     RenderShadow(
       style: InnerShadow,
@@ -750,7 +750,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       spread: 0,
       x: 0,
       y: -2,
-      fill: rgba(255, 255, 255, 82).color,
+      fill: rgba(255, 255, 255, 96).color,
     ),
     RenderShadow(
       style: InnerShadow,
@@ -758,7 +758,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       spread: 0,
       x: 0,
       y: 2,
-      fill: rgba(12, 16, 22, 54).color,
+      fill: rgba(12, 17, 24, 24).color,
     ),
     RenderShadow(),
   ]
@@ -791,7 +791,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       childCount: 0,
       zlevel: z,
       screenBox: rect(newTabRect.x, newTabRect.y + newTabRect.h - 1, newTabRect.w, 1),
-      fill: rgba(10, 14, 20, 88).color,
+      fill: rgba(12, 17, 24, 36).color,
     ),
   )
   renders.addSingleLineText(
