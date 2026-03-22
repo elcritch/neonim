@@ -27,11 +27,13 @@ const
   TopBarTabHeight = 29.0'f32
   TopBarTabY = 4.0'f32
   TopBarLeadingPad = 20.0'f32
-  TopBarLeadingReserveMac = 58.0'f32
   TopBarNewTabWidth = 29.0'f32
   TopBarTextInset = 12.0'f32
   TopBarTextLift = 2.5'f32
   TopBarInactiveBottomGap = 2.0'f32
+  TopBarMacTrafficButtonSize = 12.0'f32
+  TopBarMacTrafficButtonGap = 8.0'f32
+  TopBarAppLabel = "Neonim"
 
 type
   LineGridStateRef = ref LineGridState
@@ -149,10 +151,11 @@ proc guessMainDir(args: seq[string]): string =
   normalizedPath(getCurrentDir())
 
 proc tabLabelForDir(mainDir: string): string =
-  let dirName = extractFilename(mainDir)
-  let lead = if dirName.len > 0: dirName else: mainDir
-  let shortPath = homeShortPath(mainDir)
-  result = lead & " [" & shortPath & "]"
+  homeShortPath(mainDir)
+
+proc appLabelWidth(runtime: GuiRuntime): float32 =
+  let advance = max(1.0'f32, runtime.monoFont.size * 0.55'f32)
+  runeCount(TopBarAppLabel).float32 * advance
 
 proc rpcPackUiAttachParams(
     cols, rows: int, opts: openArray[(string, bool)]
@@ -403,7 +406,11 @@ proc removeDeadTabs(runtime: GuiRuntime) =
 
 proc tabStripStartX(runtime: GuiRuntime): float32 =
   when defined(macosx):
-    TopBarLeadingPad + TopBarLeadingReserveMac + runtime.cellW * 3.0'f32
+    let buttonsRight =
+      TopBarLeadingPad + TopBarMacTrafficButtonSize * 3.0'f32 +
+      TopBarMacTrafficButtonGap * 2.0'f32
+    let appLabelX = buttonsRight + runtime.cellW * 3.0'f32
+    appLabelX + runtime.appLabelWidth() + TopBarTabGap
   else:
     TopBarLeadingPad
 
@@ -557,8 +564,8 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
   )
 
   when not defined(macosx):
-    let buttonSize = 12.0'f32
-    let buttonGap = 8.0'f32
+    let buttonSize = TopBarMacTrafficButtonSize
+    let buttonGap = TopBarMacTrafficButtonGap
     let y = (runtime.topBarHeight - buttonSize) / 2
     for i in 0 .. 2:
       let x = TopBarLeadingPad + i.float32 * (buttonSize + buttonGap)
@@ -579,6 +586,23 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           fill: fill,
         ),
       )
+  else:
+    let buttonsRight =
+      TopBarLeadingPad + TopBarMacTrafficButtonSize * 3.0'f32 +
+      TopBarMacTrafficButtonGap * 2.0'f32
+    let appLabelX = buttonsRight + runtime.cellW * 3.0'f32
+    let appLabelY =
+      TopBarTabY + max(0.0'f32, (TopBarTabHeight - runtime.monoFont.size) * 0.5'f32) -
+      TopBarTextLift
+    renders.addSingleLineText(
+      z,
+      TopBarAppLabel,
+      runtime.monoFont,
+      rgba(231, 238, 248, 248).color,
+      appLabelX,
+      appLabelY,
+      runtime.appLabelWidth(),
+    )
 
   var newTabRect = rect(0, 0, 0, 0)
   var activeTabBox = rect(0, 0, 0, 0)
@@ -1219,6 +1243,16 @@ proc handleMouseMultiClick(runtime: GuiRuntime, clickCount: int): bool =
   runtime.state[].setPanelHighlight(cell.row, cell.col)
   result = runtime.safeRequest("nvim_input", rpcPackParams(multiInput))
 
+proc selectTabByOffset(runtime: GuiRuntime, offset: int): bool =
+  let n = runtime.tabs.len
+  if n <= 0:
+    return false
+  var idx = runtime.activeTab
+  if idx < 0 or idx >= n:
+    idx = 0
+  let next = ((idx + offset) mod n + n) mod n
+  result = runtime.selectTab(next)
+
 proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView) =
   if runtime.state.isNil:
     return
@@ -1226,11 +1260,21 @@ proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView
   let ctrlDown = siwin.ModifierKey.control in modifiers
   let shiftDown = siwin.ModifierKey.shift in modifiers
   let altDown = siwin.ModifierKey.alt in modifiers
+  let cmdDown = siwin.ModifierKey.system in modifiers
   let fontDelta = fontSizeDeltaForShortcut(key, modifiers)
   if fontDelta != 0.0'f32:
     runtime.state[].clearPanelHighlight()
     discard runtime.adjustFontSize(fontDelta)
     return
+  if cmdDown and shiftDown:
+    if key == siwin.Key.lbracket:
+      runtime.state[].clearPanelHighlight()
+      discard runtime.selectTabByOffset(-1)
+      return
+    if key == siwin.Key.rbracket:
+      runtime.state[].clearPanelHighlight()
+      discard runtime.selectTabByOffset(1)
+      return
   if clipboardShortcutModifierDown(modifiers) and runtime.handleCmdShortcut(key):
     return
   runtime.state[].clearPanelHighlight()
