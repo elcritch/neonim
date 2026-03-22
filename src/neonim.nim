@@ -22,11 +22,10 @@ const
   DefaultFontSize = 16.0'f32
   TopBarHeight = 35.0'f32
   TopBarTabGap = 10.0'f32
-  TopBarTabPadding = 18.0'f32
   TopBarTabMinWidth = 180.0'f32
   TopBarTabMaxWidth = 360.0'f32
   TopBarTabHeight = 29.0'f32
-  TopBarTabY = 2.0'f32
+  TopBarTabY = 4.0'f32
   TopBarLeadingPad = 20.0'f32
   TopBarLeadingReserveMac = 150.0'f32
   TopBarNewTabWidth = 29.0'f32
@@ -405,7 +404,8 @@ proc tabStripStartX(runtime: GuiRuntime): float32 =
 
 proc tabWidthForLabel(runtime: GuiRuntime, label: string): float32 =
   let textW = runeCount(label).float32 * runtime.cellW
-  min(TopBarTabMaxWidth, max(TopBarTabMinWidth, textW + TopBarTabPadding * 2))
+  let horizontalTextPadding = TopBarTextInset * 2
+  min(TopBarTabMaxWidth, max(TopBarTabMinWidth, textW + horizontalTextPadding))
 
 proc tabRects(
     runtime: GuiRuntime, logicalWidth: float32, newTabRect: var Rect
