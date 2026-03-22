@@ -506,7 +506,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
   let textInset = TopBarTextInset
   let tabTopStrokeInset = 4.0'f32
   let buttonTopStrokeInset = 3.0'f32
-  let activeBlendColor = runtime.tabToneRgba(227, 236, 248, 210, 0.58'f32).color
+  let activeBlendColor = runtime.tabToneRgba(227, 236, 248, 184, 0.58'f32).color
   let separatorH = 3.0'f32
   let z = 2.ZLevel
   let barH = runtime.topBarHeight
@@ -602,8 +602,8 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     let tabFill =
       if isActive:
         linear(
-          runtime.tabToneRgba(255, 255, 255, 214, 0.42'f32),
-          runtime.tabToneRgba(246, 250, 255, 198, 0.50'f32),
+          runtime.tabToneRgba(255, 255, 255, 194, 0.42'f32),
+          runtime.tabToneRgba(246, 250, 255, 182, 0.50'f32),
           runtime.tabToneRgba(227, 236, 248, 184, 0.58'f32),
           axis = fgaY,
           midPos = 112'u8,
@@ -626,7 +626,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         )
     let tabStroke =
       if isActive:
-        runtime.tabToneRgba(255, 255, 255, 72, 0.28'f32).color
+        runtime.tabToneRgba(255, 255, 255, 52, 0.28'f32).color
       elif isHover:
         runtime.tabToneRgba(244, 249, 255, 84, 0.24'f32).color
       else:
@@ -653,7 +653,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: -3,
-            fill: runtime.tabToneRgba(255, 255, 255, 68, 0.18'f32).color,
+            fill: runtime.tabToneRgba(255, 255, 255, 36, 0.18'f32).color,
           ),
           RenderShadow(
             style: InnerShadow,
