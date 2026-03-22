@@ -84,6 +84,7 @@ type
     tabShadeR: int
     tabShadeG: int
     tabShadeB: int
+    lastTabDirSyncAt: float64
     state*: LineGridStateRef
     hl*: HlStateRef
     frameIdle*: int
@@ -269,11 +270,14 @@ proc syncActiveAliases(runtime: GuiRuntime) =
   runtime.state = tab.state
   runtime.hl = tab.hl
 
+proc syncActiveTabDir(runtime: GuiRuntime, force = false)
+
 proc selectTab(runtime: GuiRuntime, idx: int): bool =
   if idx < 0 or idx >= runtime.tabs.len:
     return false
   runtime.activeTab = idx
   runtime.syncActiveAliases()
+  runtime.syncActiveTabDir(force = true)
   if not runtime.state.isNil:
     runtime.state.needsRedraw = true
   result = true
@@ -299,6 +303,27 @@ proc currentDirFromNvim(client: NeovimClient, fallbackDir: string): string =
     return normalizedExistingDir(dir, fallbackDir)
   except CatchableError:
     normalizedPath(fallbackDir)
+
+proc currentMainDirFromNvim(client: NeovimClient, fallbackDir: string): string =
+  try:
+    let resp =
+      client.callAndWait("nvim_eval", rpcPackParams("expand('%:p')"), timeout = 0.75)
+    if not resp.error.isNilValue:
+      return currentDirFromNvim(client, fallbackDir)
+    var path = ""
+    rpcUnpack(resp.result, path)
+    if path.len > 0:
+      let expanded = expandFilename(path)
+      if dirExists(expanded):
+        return normalizedPath(expanded)
+      if fileExists(expanded):
+        return normalizedPath(parentDir(expanded))
+      let parent = parentDir(expanded)
+      if parent.len > 0 and parent != ".":
+        return normalizedPath(parent)
+  except CatchableError:
+    discard
+  currentDirFromNvim(client, fallbackDir)
 
 proc installDirChangedAutocmd(client: NeovimClient, channelId: int64) =
   let lua =
@@ -415,6 +440,22 @@ proc addProcessTab(
   except CatchableError as err:
     warn "failed to create nvim tab", mainDir = mainDir, error = err.msg
     result = false
+
+proc syncActiveTabDir(runtime: GuiRuntime, force = false) =
+  let tab = runtime.activeTabRef()
+  if tab.isNil or tab.client.isNil or (not tab.client.isRunning()):
+    return
+  let nowTs = epochTime()
+  if not force and (nowTs - runtime.lastTabDirSyncAt) < 0.35:
+    return
+  runtime.lastTabDirSyncAt = nowTs
+  let nextDir = currentMainDirFromNvim(tab.client, tab.mainDir)
+  if nextDir == tab.mainDir:
+    return
+  tab.mainDir = nextDir
+  tab.label = tabLabelForDir(nextDir)
+  if not tab.state.isNil:
+    tab.state.needsRedraw = true
 
 proc removeDeadTabs(runtime: GuiRuntime) =
   var i = 0
@@ -1407,6 +1448,7 @@ proc stepGui*(runtime: GuiRuntime): bool =
   for tab in runtime.tabs:
     if not tab.isNil and not tab.client.isNil:
       tab.client.poll()
+  runtime.syncActiveTabDir()
   runtime.removeDeadTabs()
   if runtime.tabs.len == 0:
     return false
