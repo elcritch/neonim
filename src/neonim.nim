@@ -20,17 +20,18 @@ const
   NeonimWindowBackendName = "siwin"
   NvimDirChangedMethod = "neonim_dir_changed"
   DefaultFontSize = 16.0'f32
-  TopBarHeight = 50.0'f32
+  TopBarHeight = 35.0'f32
   TopBarTabGap = 10.0'f32
   TopBarTabPadding = 18.0'f32
   TopBarTabMinWidth = 180.0'f32
   TopBarTabMaxWidth = 360.0'f32
-  TopBarTabHeight = 36.0'f32
-  TopBarTabY = 7.0'f32
+  TopBarTabHeight = 29.0'f32
+  TopBarTabY = 2.0'f32
   TopBarLeadingPad = 20.0'f32
   TopBarLeadingReserveMac = 150.0'f32
-  TopBarNewTabWidth = 34.0'f32
+  TopBarNewTabWidth = 29.0'f32
   TopBarTextInset = 12.0'f32
+  TopBarTextLift = 2.5'f32
 
 type
   LineGridStateRef = ref LineGridState
@@ -484,7 +485,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
   let z = 2.ZLevel
   let barH = runtime.topBarHeight
 
-  # macOS-like translucent titlebar gradient.
+  # Flat titlebar background to match native macOS chrome tone.
   discard renders.addRoot(
     z,
     Fig(
@@ -492,43 +493,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       childCount: 0,
       zlevel: z,
       screenBox: rect(0, 0, logicalSize.x, barH),
-      fill: linear(
-        rgba(88, 94, 106, 226),
-        rgba(68, 75, 88, 220),
-        rgba(52, 59, 72, 226),
-        axis = fgaY,
-        midPos = 100'u8,
-      ),
-      shadows: [
-        RenderShadow(
-          style: InnerShadow,
-          blur: 10,
-          spread: 0,
-          x: 0,
-          y: -3,
-          fill: rgba(255, 255, 255, 46).color,
-        ),
-        RenderShadow(
-          style: InnerShadow,
-          blur: 12,
-          spread: 0,
-          x: 0,
-          y: 4,
-          fill: rgba(10, 14, 22, 70).color,
-        ),
-        RenderShadow(),
-        RenderShadow(),
-      ],
-    ),
-  )
-  discard renders.addRoot(
-    z,
-    Fig(
-      kind: nkRectangle,
-      childCount: 0,
-      zlevel: z,
-      screenBox: rect(0, 0, logicalSize.x, barH * 0.46),
-      fill: linear(rgba(255, 255, 255, 54), rgba(255, 255, 255, 10), axis = fgaY),
+      fill: rgba(62, 65, 72, 255).color,
     ),
   )
   discard renders.addRoot(
@@ -572,6 +537,8 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     let tab = runtime.tabs[idx]
     let isActive = idx == runtime.activeTab
     let isHover = idx == runtime.hoverTab
+    let tabTextY =
+      box.y + max(0.0'f32, (box.h - runtime.monoFont.size) * 0.5'f32) - TopBarTextLift
     let tabFill =
       if isActive:
         linear(
@@ -714,10 +681,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         childCount: 0,
         zlevel: z,
         screenBox: rect(
-          box.x + tabTopStrokeInset,
-          box.y,
-          max(1, box.w - tabTopStrokeInset * 2),
-          1,
+          box.x + tabTopStrokeInset, box.y, max(1, box.w - tabTopStrokeInset * 2), 1
         ),
         fill: tabStroke,
       ),
@@ -738,7 +702,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       runtime.monoFont,
       tabTextColor,
       box.x + textInset,
-      box.y + 11,
+      tabTextY,
       max(20, box.w - textInset * 2),
     )
 
@@ -811,9 +775,10 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     "+",
     runtime.monoFont,
     rgba(230, 238, 249, 250).color,
-    newTabRect.x + 12,
-    newTabRect.y + 10,
-    10,
+    newTabRect.x + max(0.0'f32, (newTabRect.w - 10.0'f32) * 0.5'f32),
+    newTabRect.y + max(0.0'f32, (newTabRect.h - runtime.monoFont.size) * 0.5'f32) -
+      TopBarTextLift,
+    10.0'f32,
   )
 
 proc redrawGui*(runtime: GuiRuntime) =
@@ -1334,6 +1299,8 @@ proc initGuiRuntime*(
     result.window = siwin.newSiwinWindow(size = size, fullscreen = false, title = title)
     result.renderer =
       newFigRenderer(atlasSize = 4096, backendState = siwin.SiwinRenderBackend())
+  if result.window.supportsCustomTitlebar():
+    result.window.customTitlebar = true
   result.mouseDown = {}
   result.modifiers = {}
   result.lastScroll = vec2(0, 0)
