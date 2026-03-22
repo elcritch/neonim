@@ -526,7 +526,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       childCount: 0,
       zlevel: z,
       screenBox: rect(0, barH - 1, logicalSize.x, 1),
-      fill: rgba(12, 17, 24, 116).color,
+      fill: rgba(8, 12, 18, 62).color,
     ),
   )
 
@@ -822,8 +822,9 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     10.0'f32,
   )
 
-  # Content-top separator: white line with an active-tab blend segment.
-  let contentTopY = barH
+  # Content-top separator: thicker white band with an active-tab blend segment.
+  let separatorH = 3.0'f32
+  let contentTopY = barH - separatorH + 1.0'f32
   if hasActiveTab:
     if activeTabBox.x > 0:
       discard renders.addRoot(
@@ -832,8 +833,8 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           kind: nkRectangle,
           childCount: 0,
           zlevel: z,
-          screenBox: rect(0, contentTopY, activeTabBox.x, 1),
-          fill: rgba(236, 242, 250, 66).color,
+          screenBox: rect(0, contentTopY, activeTabBox.x, separatorH),
+          fill: rgba(244, 248, 255, 122).color,
         ),
       )
     let activeRight = activeTabBox.x + activeTabBox.w
@@ -844,8 +845,9 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           kind: nkRectangle,
           childCount: 0,
           zlevel: z,
-          screenBox: rect(activeRight, contentTopY, logicalSize.x - activeRight, 1),
-          fill: rgba(236, 242, 250, 66).color,
+          screenBox:
+            rect(activeRight, contentTopY, logicalSize.x - activeRight, separatorH),
+          fill: rgba(244, 248, 255, 122).color,
         ),
       )
     discard renders.addRoot(
@@ -854,8 +856,8 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         kind: nkRectangle,
         childCount: 0,
         zlevel: z,
-        screenBox: rect(activeTabBox.x, contentTopY, activeTabBox.w, 1),
-        fill: rgba(233, 241, 251, 186).color,
+        screenBox: rect(activeTabBox.x, contentTopY, activeTabBox.w, separatorH),
+        fill: rgba(239, 247, 255, 228).color,
       ),
     )
   else:
@@ -865,8 +867,8 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         kind: nkRectangle,
         childCount: 0,
         zlevel: z,
-        screenBox: rect(0, contentTopY, logicalSize.x, 1),
-        fill: rgba(236, 242, 250, 66).color,
+        screenBox: rect(0, contentTopY, logicalSize.x, separatorH),
+        fill: rgba(244, 248, 255, 122).color,
       ),
     )
 
