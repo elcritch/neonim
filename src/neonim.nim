@@ -80,6 +80,10 @@ type
     tabColorR: int
     tabColorG: int
     tabColorB: int
+    tabShadeEnabled: bool
+    tabShadeR: int
+    tabShadeG: int
+    tabShadeB: int
     state*: LineGridStateRef
     hl*: HlStateRef
     frameIdle*: int
@@ -535,6 +539,17 @@ proc tabToneRgba(runtime: GuiRuntime, r, g, b, a: int, tintAmount: float32): aut
   else:
     rgba(clampByte(r), clampByte(g), clampByte(b), clampByte(a))
 
+proc tabShadeRgba(runtime: GuiRuntime, r, g, b, a: int, shadeAmount: float32): auto =
+  if runtime.tabShadeEnabled:
+    rgba(
+      mixByte(r, runtime.tabShadeR, shadeAmount),
+      mixByte(g, runtime.tabShadeG, shadeAmount),
+      mixByte(b, runtime.tabShadeB, shadeAmount),
+      clampByte(a),
+    )
+  else:
+    rgba(clampByte(r), clampByte(g), clampByte(b), clampByte(a))
+
 proc offsetRendersY(renders: var Renders, yOffset: float32) =
   for _, list in renders.layers.mpairs:
     for i in 0 ..< list.nodes.len:
@@ -653,15 +668,15 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     let tabFill =
       if isActive:
         linear(
-          runtime.tabToneRgba(255, 255, 255, 194, 0.42'f32),
-          runtime.tabToneRgba(246, 250, 255, 182, 0.50'f32),
+          runtime.tabShadeRgba(255, 255, 255, 194, 0.90'f32),
+          runtime.tabShadeRgba(246, 250, 255, 182, 0.82'f32),
           runtime.tabToneRgba(227, 236, 248, 184, 0.58'f32),
           axis = fgaY,
           midPos = 112'u8,
         )
       elif isHover:
         linear(
-          runtime.tabToneRgba(243, 249, 255, 178, 0.38'f32),
+          runtime.tabShadeRgba(243, 249, 255, 178, 0.78'f32),
           runtime.tabToneRgba(220, 231, 246, 152, 0.45'f32),
           runtime.tabToneRgba(193, 207, 227, 136, 0.52'f32),
           axis = fgaY,
@@ -669,7 +684,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         )
       else:
         linear(
-          runtime.tabToneRgba(228, 238, 252, 136, 0.46'f32),
+          runtime.tabShadeRgba(228, 238, 252, 136, 0.70'f32),
           runtime.tabToneRgba(202, 215, 234, 116, 0.54'f32),
           runtime.tabToneRgba(178, 194, 218, 100, 0.62'f32),
           axis = fgaY,
@@ -677,11 +692,11 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         )
     let tabStroke =
       if isActive:
-        runtime.tabToneRgba(255, 255, 255, 52, 0.28'f32).color
+        runtime.tabShadeRgba(255, 255, 255, 52, 0.76'f32).color
       elif isHover:
-        runtime.tabToneRgba(244, 249, 255, 84, 0.24'f32).color
+        runtime.tabShadeRgba(244, 249, 255, 84, 0.68'f32).color
       else:
-        runtime.tabToneRgba(236, 244, 255, 68, 0.30'f32).color
+        runtime.tabShadeRgba(236, 244, 255, 68, 0.62'f32).color
     let tabTextColor =
       if isActive:
         rgba(34, 43, 54, 255).color
@@ -704,7 +719,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: -3,
-            fill: runtime.tabToneRgba(255, 255, 255, 36, 0.18'f32).color,
+            fill: runtime.tabShadeRgba(255, 255, 255, 36, 0.90'f32).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -732,7 +747,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: -2,
-            fill: rgba(255, 255, 255, 92).color,
+            fill: runtime.tabShadeRgba(255, 255, 255, 92, 0.82'f32).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -760,7 +775,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: -2,
-            fill: rgba(255, 255, 255, 72).color,
+            fill: runtime.tabShadeRgba(255, 255, 255, 72, 0.74'f32).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -1473,14 +1488,14 @@ proc uiScaleFromEnv*(fallbackScale: float32): float32 =
     warn "invalid ui scale, must be numeric", env = EnvKey, value = raw
   fallbackScale
 
-proc tabColorFromEnv*(): tuple[enabled: bool, r, g, b: int] =
-  const EnvKey = "NEONIM_TAB_ACCENT_COLOR"
-  const LegacyEnvKey = "NEONIM_TAB_COLOR"
-  var usedKey = EnvKey
-  var raw = getEnv(EnvKey)
-  if raw.len == 0:
-    usedKey = LegacyEnvKey
-    raw = getEnv(LegacyEnvKey)
+proc parseOptionalColorEnv(
+    primaryKey: string, legacyKey: string, desc: string
+): tuple[enabled: bool, r, g, b: int] =
+  var usedKey = primaryKey
+  var raw = getEnv(primaryKey)
+  if raw.len == 0 and legacyKey.len > 0:
+    usedKey = legacyKey
+    raw = getEnv(legacyKey)
   if raw.len == 0:
     return (false, 0, 0, 0)
 
@@ -1505,14 +1520,26 @@ proc tabColorFromEnv*(): tuple[enabled: bool, r, g, b: int] =
       let g = parts[1].strip().parseInt()
       let b = parts[2].strip().parseInt()
       if r < 0 or r > 255 or g < 0 or g > 255 or b < 0 or b > 255:
-        warn "invalid tab color channel, expected 0..255", env = usedKey, value = raw
+        warn "invalid color channel, expected 0..255",
+          color = desc, env = usedKey, value = raw
         return (false, 0, 0, 0)
       return (true, r, g, b)
     except ValueError:
       discard
 
-  warn "invalid tab color, expected #RRGGBB or R,G,B", env = usedKey, value = raw
+  warn "invalid color, expected #RRGGBB or R,G,B",
+    color = desc, env = usedKey, value = raw
   (false, 0, 0, 0)
+
+proc tabColorFromEnv*(): tuple[enabled: bool, r, g, b: int] =
+  parseOptionalColorEnv(
+    "NEONIM_TAB_ACCENT_COLOR", "NEONIM_TAB_COLOR", "tab accent color"
+  )
+
+proc tabShadeColorFromEnv*(): tuple[enabled: bool, r, g, b: int] =
+  parseOptionalColorEnv(
+    "NEONIM_TAB_SHADE_COLOR", "NEONIM_TAB_SHADING_COLOR", "tab shade color"
+  )
 
 proc initGuiRuntime*(
     config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig()
@@ -1532,6 +1559,11 @@ proc initGuiRuntime*(
   result.tabColorR = tabColor.r
   result.tabColorG = tabColor.g
   result.tabColorB = tabColor.b
+  let tabShadeColor = tabShadeColorFromEnv()
+  result.tabShadeEnabled = tabShadeColor.enabled
+  result.tabShadeR = tabShadeColor.r
+  result.tabShadeG = tabShadeColor.g
+  result.tabShadeB = tabShadeColor.b
   result.testStart = epochTime()
   result.figNodesDumpPath = getEnv("NEONIM_FIG_NODES_OUT")
   let size = ivec2(1000, 700)
