@@ -18,6 +18,7 @@ import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend]
 const
   EmbeddedWindowIconPng = staticRead("../data/neonim-icon-128.png")
   NeonimWindowBackendName = "siwin"
+  NvimDirChangedMethod = "neonim_dir_changed"
   DefaultFontSize = 16.0'f32
   TopBarHeight = 50.0'f32
   TopBarTabGap = 10.0'f32
@@ -267,6 +268,33 @@ proc normalizedExistingDir(path: string, fallbackDir: string): string =
     return normalizedPath(candidate)
   result = normalizedPath(fallbackDir)
 
+proc currentDirFromNvim(client: NeovimClient, fallbackDir: string): string =
+  try:
+    let resp =
+      client.callAndWait("nvim_eval", rpcPackParams("getcwd()"), timeout = 0.75)
+    if not resp.error.isNilValue:
+      return normalizedPath(fallbackDir)
+    var dir = ""
+    rpcUnpack(resp.result, dir)
+    return normalizedExistingDir(dir, fallbackDir)
+  except CatchableError:
+    normalizedPath(fallbackDir)
+
+proc installDirChangedAutocmd(client: NeovimClient, channelId: int64) =
+  let lua =
+    """
+local channel = ...
+local group = vim.api.nvim_create_augroup('NeonimProcessTabs', { clear = true })
+vim.api.nvim_create_autocmd('DirChanged', {
+  group = group,
+  callback = function()
+    vim.rpcnotify(channel, 'neonim_dir_changed', vim.fn.getcwd())
+  end,
+})
+"""
+  discard
+    client.callAndWait("nvim_exec_lua", rpcPackParams(lua, channelId), timeout = 1.0)
+
 proc createProcessTab(
     runtime: GuiRuntime, mainDir: string, nvimArgs: seq[string]
 ): NvimProcessTab =
@@ -284,7 +312,41 @@ proc createProcessTab(
 
   let client = newNeovimClient()
   client.start(runtime.config.nvimCmd, nvimArgs, cwd = tabDir)
-  discard client.discoverMetadata()
+  let metadata = client.discoverMetadata()
+
+  new(result)
+  result.id = runtime.nextTabId
+  inc runtime.nextTabId
+  result.mainDir = currentDirFromNvim(client, tabDir)
+  result.label = tabLabelForDir(result.mainDir)
+  result.client = client
+  result.state = stateRef
+  result.hl = hlRef
+
+  let tabRef = result
+  client.onNotification = proc(methodName: string, params: RpcParamsBuffer) =
+    if methodName == "redraw":
+      handleRedraw(tabRef.state[], tabRef.hl[], params)
+    elif methodName == NvimDirChangedMethod:
+      try:
+        var args: seq[string] = @[]
+        rpcUnpack(params, args)
+        if args.len == 0:
+          return
+        let nextDir = normalizedExistingDir(args[0], tabRef.mainDir)
+        if nextDir == tabRef.mainDir:
+          return
+        tabRef.mainDir = nextDir
+        tabRef.label = tabLabelForDir(nextDir)
+        if runtime.activeTabRef() == tabRef and not tabRef.state.isNil:
+          tabRef.state.needsRedraw = true
+      except CatchableError as err:
+        warn "failed to update tab dir from nvim notification", error = err.msg
+
+  try:
+    client.installDirChangedAutocmd(metadata.channelId)
+  except CatchableError as err:
+    warn "failed to install nvim DirChanged autocmd", error = err.msg
 
   let opts = [
     ("rgb", true),
@@ -296,21 +358,6 @@ proc createProcessTab(
   discard client.callAndWait(
     "nvim_ui_attach", rpcPackUiAttachParams(cols, rows, opts), timeout = 3.0
   )
-
-  let notifState = stateRef
-  let notifHl = hlRef
-  client.onNotification = proc(methodName: string, params: RpcParamsBuffer) =
-    if methodName == "redraw":
-      handleRedraw(notifState[], notifHl[], params)
-
-  new(result)
-  result.id = runtime.nextTabId
-  inc runtime.nextTabId
-  result.mainDir = tabDir
-  result.label = tabLabelForDir(tabDir)
-  result.client = client
-  result.state = stateRef
-  result.hl = hlRef
 
 proc addProcessTab(
     runtime: GuiRuntime, mainDir: string, nvimArgs: seq[string] = @[]
