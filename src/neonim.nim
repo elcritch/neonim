@@ -480,14 +480,43 @@ proc offsetRendersY(renders: var Renders, yOffset: float32) =
 proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) =
   let textInset = TopBarTextInset
   let z = 2.ZLevel
+  let barH = runtime.topBarHeight
+
+  # macOS-like translucent titlebar gradient.
   discard renders.addRoot(
     z,
     Fig(
       kind: nkRectangle,
       childCount: 0,
       zlevel: z,
-      screenBox: rect(0, 0, logicalSize.x, runtime.topBarHeight),
-      fill: rgba(34, 38, 44, 255).color,
+      screenBox: rect(0, 0, logicalSize.x, barH),
+      fill: linear(
+        rgba(74, 79, 88, 240),
+        rgba(47, 53, 64, 236),
+        rgba(32, 37, 46, 244),
+        axis = fgaY,
+        midPos = 100'u8,
+      ),
+      shadows: [
+        RenderShadow(
+          style: InnerShadow,
+          blur: 10,
+          spread: 0,
+          x: 0,
+          y: -3,
+          fill: rgba(255, 255, 255, 34).color,
+        ),
+        RenderShadow(
+          style: InnerShadow,
+          blur: 12,
+          spread: 0,
+          x: 0,
+          y: 4,
+          fill: rgba(6, 9, 14, 100).color,
+        ),
+        RenderShadow(),
+        RenderShadow(),
+      ],
     ),
   )
   discard renders.addRoot(
@@ -496,8 +525,18 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       kind: nkRectangle,
       childCount: 0,
       zlevel: z,
-      screenBox: rect(0, runtime.topBarHeight - 1, logicalSize.x, 1),
-      fill: rgba(58, 64, 72, 255).color,
+      screenBox: rect(0, 0, logicalSize.x, barH * 0.46),
+      fill: linear(rgba(255, 255, 255, 40), rgba(255, 255, 255, 6), axis = fgaY),
+    ),
+  )
+  discard renders.addRoot(
+    z,
+    Fig(
+      kind: nkRectangle,
+      childCount: 0,
+      zlevel: z,
+      screenBox: rect(0, barH - 1, logicalSize.x, 1),
+      fill: rgba(8, 11, 16, 174).color,
     ),
   )
 
@@ -529,21 +568,168 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
   let rects = runtime.tabRects(logicalSize.x, newTabRect)
   for idx, box in rects:
     let tab = runtime.tabs[idx]
-    let fill =
-      if idx == runtime.activeTab:
-        rgba(78, 123, 194, 255).color
-      elif idx == runtime.hoverTab:
-        rgba(70, 78, 90, 255).color
+    let isActive = idx == runtime.activeTab
+    let isHover = idx == runtime.hoverTab
+    let tabFill =
+      if isActive:
+        linear(
+          rgba(254, 255, 255, 232),
+          rgba(236, 241, 248, 214),
+          rgba(205, 214, 228, 198),
+          axis = fgaY,
+          midPos = 112'u8,
+        )
+      elif isHover:
+        linear(
+          rgba(230, 238, 251, 146),
+          rgba(197, 210, 229, 110),
+          rgba(169, 184, 207, 96),
+          axis = fgaY,
+          midPos = 112'u8,
+        )
       else:
-        rgba(52, 58, 66, 255).color
+        linear(
+          rgba(212, 223, 241, 92),
+          rgba(176, 190, 213, 76),
+          rgba(150, 166, 192, 68),
+          axis = fgaY,
+          midPos = 112'u8,
+        )
+    let tabStroke =
+      if isActive:
+        rgba(255, 255, 255, 124).color
+      elif isHover:
+        rgba(242, 248, 255, 96).color
+      else:
+        rgba(232, 240, 252, 66).color
+    let tabTextColor =
+      if isActive:
+        rgba(34, 43, 54, 255).color
+      else:
+        rgba(231, 238, 248, 248).color
+    let tabShadows =
+      if isActive:
+        [
+          RenderShadow(
+            style: DropShadow,
+            blur: 9,
+            spread: 0,
+            x: 0,
+            y: 2,
+            fill: rgba(0, 0, 0, 52).color,
+          ),
+          RenderShadow(
+            style: InnerShadow,
+            blur: 8,
+            spread: 0,
+            x: 0,
+            y: -3,
+            fill: rgba(255, 255, 255, 108).color,
+          ),
+          RenderShadow(
+            style: InnerShadow,
+            blur: 10,
+            spread: 0,
+            x: 0,
+            y: 3,
+            fill: rgba(10, 14, 20, 64).color,
+          ),
+          RenderShadow(),
+        ]
+      elif isHover:
+        [
+          RenderShadow(
+            style: DropShadow,
+            blur: 8,
+            spread: 0,
+            x: 0,
+            y: 2,
+            fill: rgba(0, 0, 0, 44).color,
+          ),
+          RenderShadow(
+            style: InnerShadow,
+            blur: 7,
+            spread: 0,
+            x: 0,
+            y: -2,
+            fill: rgba(255, 255, 255, 78).color,
+          ),
+          RenderShadow(
+            style: InnerShadow,
+            blur: 8,
+            spread: 0,
+            x: 0,
+            y: 2,
+            fill: rgba(12, 16, 24, 54).color,
+          ),
+          RenderShadow(),
+        ]
+      else:
+        [
+          RenderShadow(
+            style: DropShadow,
+            blur: 7,
+            spread: 0,
+            x: 0,
+            y: 2,
+            fill: rgba(0, 0, 0, 36).color,
+          ),
+          RenderShadow(
+            style: InnerShadow,
+            blur: 6,
+            spread: 0,
+            x: 0,
+            y: -2,
+            fill: rgba(255, 255, 255, 54).color,
+          ),
+          RenderShadow(
+            style: InnerShadow,
+            blur: 8,
+            spread: 0,
+            x: 0,
+            y: 2,
+            fill: rgba(12, 16, 24, 46).color,
+          ),
+          RenderShadow(),
+        ]
+
     discard renders.addRoot(
-      z, Fig(kind: nkRectangle, childCount: 0, zlevel: z, screenBox: box, fill: fill)
+      z,
+      Fig(
+        kind: nkRectangle,
+        childCount: 0,
+        zlevel: z,
+        screenBox: box,
+        fill: tabFill,
+        corners: [8, 8, 5, 5],
+        shadows: tabShadows,
+      ),
+    )
+    discard renders.addRoot(
+      z,
+      Fig(
+        kind: nkRectangle,
+        childCount: 0,
+        zlevel: z,
+        screenBox: rect(box.x, box.y, box.w, 1),
+        fill: tabStroke,
+      ),
+    )
+    discard renders.addRoot(
+      z,
+      Fig(
+        kind: nkRectangle,
+        childCount: 0,
+        zlevel: z,
+        screenBox: rect(box.x, box.y + box.h - 1, box.w, 1),
+        fill: rgba(10, 14, 20, 80).color,
+      ),
     )
     renders.addSingleLineText(
       z,
       tab.label,
       runtime.monoFont,
-      rgba(228, 236, 250, 255).color,
+      tabTextColor,
       box.x + textInset,
       box.y + 11,
       max(20, box.w - textInset * 2),
@@ -551,20 +737,68 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
 
   let plusFill =
     if runtime.hoverNewTab:
-      rgba(76, 86, 98, 255).color
+      linear(rgba(233, 241, 252, 146), rgba(186, 200, 222, 124), axis = fgaY)
     else:
-      rgba(56, 62, 70, 255).color
+      linear(rgba(212, 223, 241, 96), rgba(160, 176, 201, 78), axis = fgaY)
+  let plusShadows = [
+    RenderShadow(
+      style: DropShadow, blur: 7, spread: 0, x: 0, y: 2, fill: rgba(0, 0, 0, 40).color
+    ),
+    RenderShadow(
+      style: InnerShadow,
+      blur: 6,
+      spread: 0,
+      x: 0,
+      y: -2,
+      fill: rgba(255, 255, 255, 82).color,
+    ),
+    RenderShadow(
+      style: InnerShadow,
+      blur: 7,
+      spread: 0,
+      x: 0,
+      y: 2,
+      fill: rgba(12, 16, 22, 54).color,
+    ),
+    RenderShadow(),
+  ]
   discard renders.addRoot(
     z,
     Fig(
-      kind: nkRectangle, childCount: 0, zlevel: z, screenBox: newTabRect, fill: plusFill
+      kind: nkRectangle,
+      childCount: 0,
+      zlevel: z,
+      screenBox: newTabRect,
+      fill: plusFill,
+      corners: [6, 6, 6, 6],
+      shadows: plusShadows,
+    ),
+  )
+  discard renders.addRoot(
+    z,
+    Fig(
+      kind: nkRectangle,
+      childCount: 0,
+      zlevel: z,
+      screenBox: rect(newTabRect.x, newTabRect.y, newTabRect.w, 1),
+      fill: rgba(246, 250, 255, 98).color,
+    ),
+  )
+  discard renders.addRoot(
+    z,
+    Fig(
+      kind: nkRectangle,
+      childCount: 0,
+      zlevel: z,
+      screenBox: rect(newTabRect.x, newTabRect.y + newTabRect.h - 1, newTabRect.w, 1),
+      fill: rgba(10, 14, 20, 88).color,
     ),
   )
   renders.addSingleLineText(
     z,
     "+",
     runtime.monoFont,
-    rgba(236, 240, 248, 255).color,
+    rgba(230, 238, 249, 250).color,
     newTabRect.x + 12,
     newTabRect.y + 10,
     10,
