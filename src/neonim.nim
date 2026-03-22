@@ -506,9 +506,11 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
   let textInset = TopBarTextInset
   let tabTopStrokeInset = 4.0'f32
   let buttonTopStrokeInset = 3.0'f32
-  let activeBlendColor = rgba(236, 243, 252, 236).color
+  let activeBlendColor = runtime.tabToneRgba(227, 236, 248, 210, 0.58'f32).color
+  let separatorH = 3.0'f32
   let z = 2.ZLevel
   let barH = runtime.topBarHeight
+  let contentTopY = barH - separatorH + 1.0'f32
 
   # Flat titlebar background to match native macOS chrome tone.
   discard renders.addRoot(
@@ -600,9 +602,9 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
     let tabFill =
       if isActive:
         linear(
-          runtime.tabToneRgba(255, 255, 255, 244, 0.30'f32),
-          runtime.tabToneRgba(246, 250, 255, 234, 0.36'f32),
-          runtime.tabToneRgba(227, 236, 248, 220, 0.42'f32),
+          runtime.tabToneRgba(255, 255, 255, 214, 0.42'f32),
+          runtime.tabToneRgba(246, 250, 255, 198, 0.50'f32),
+          runtime.tabToneRgba(227, 236, 248, 184, 0.58'f32),
           axis = fgaY,
           midPos = 112'u8,
         )
@@ -624,7 +626,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         )
     let tabStroke =
       if isActive:
-        runtime.tabToneRgba(255, 255, 255, 104, 0.20'f32).color
+        runtime.tabToneRgba(255, 255, 255, 72, 0.28'f32).color
       elif isHover:
         runtime.tabToneRgba(244, 249, 255, 84, 0.24'f32).color
       else:
@@ -651,7 +653,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
             spread: 0,
             x: 0,
             y: -3,
-            fill: rgba(255, 255, 255, 118).color,
+            fill: runtime.tabToneRgba(255, 255, 255, 68, 0.18'f32).color,
           ),
           RenderShadow(
             style: InnerShadow,
@@ -748,17 +750,19 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       ),
     )
     if isActive:
-      let mergeH = max(1.0'f32, barH - (box.y + box.h))
-      discard renders.addRoot(
-        z,
-        Fig(
-          kind: nkRectangle,
-          childCount: 0,
-          zlevel: z,
-          screenBox: rect(box.x, box.y + box.h - 1, box.w, mergeH),
-          fill: activeBlendColor,
-        ),
-      )
+      let mergeTop = box.y + box.h
+      let mergeH = contentTopY - mergeTop
+      if mergeH > 0.0'f32:
+        discard renders.addRoot(
+          z,
+          Fig(
+            kind: nkRectangle,
+            childCount: 0,
+            zlevel: z,
+            screenBox: rect(box.x, mergeTop, box.w, mergeH),
+            fill: activeBlendColor,
+          ),
+        )
     else:
       discard renders.addRoot(
         z,
@@ -862,8 +866,6 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
   )
 
   # Content-top separator: thicker white band with an active-tab blend segment.
-  let separatorH = 3.0'f32
-  let contentTopY = barH - separatorH + 1.0'f32
   if hasActiveTab:
     if activeTabBox.x > 0:
       discard renders.addRoot(
