@@ -403,7 +403,8 @@ proc tabStripStartX(runtime: GuiRuntime): float32 =
     TopBarLeadingPad
 
 proc tabWidthForLabel(runtime: GuiRuntime, label: string): float32 =
-  let textW = runeCount(label).float32 * runtime.cellW
+  let advance = max(1.0'f32, runtime.monoFont.size * 0.55'f32)
+  let textW = runeCount(label).float32 * advance
   let horizontalTextPadding = TopBarTextInset * 2
   min(TopBarTabMaxWidth, max(TopBarTabMinWidth, textW + horizontalTextPadding))
 
