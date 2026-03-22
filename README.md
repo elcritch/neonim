@@ -42,8 +42,8 @@ bin/neonim -D ~/code/my-project
 # or
 bin/neonim --detach ~/code/my-project
 
-# Set FONT or HDI
-HDI=1.8 FONT="JetBrainsMonoNLNerdFont-Thin.ttf" bin/neonim ~/code/my-project
+# Set font family, font size, or UI scale
+NEONIM_FONT="JetBrainsMonoNLNerdFont-Thin.ttf" NEONIM_FONTSIZE=18 NEONIM_HDI=1.8 bin/neonim ~/code/my-project
 
 # Increase/decrease mouse wheel scroll speed (default is 1.5)
 NEONIM_SCROLL_SPEED_MULTIPLIER=2.0 bin/neonim ~/code/my-project
@@ -71,7 +71,7 @@ nim test
 
 ## Input Notes
 
-- `Cmd +` / `Cmd =` / `Cmd -` (macOS) and `Ctrl +` / `Ctrl =` / `Ctrl -` (Linux/Windows) adjust UI scale.
+- `Cmd +` / `Cmd =` / `Cmd -` (macOS) and `Ctrl +` / `Ctrl =` / `Ctrl -` (Linux/Windows) adjust font size.
 - `Cmd-c` / `Cmd-v` (macOS) and `Ctrl-Shift-c` / `Ctrl-Shift-v` (Linux/Windows) copy and paste via the system clipboard.
 - `Alt-f` and `Alt-b` are sent as Meta keys (`<A-f>`, `<A-b>`), so terminal word-jump works.
 - Double/triple/quadruple left-click send `<2-LeftMouse>`, `<3-LeftMouse>`, `<4-LeftMouse>`.

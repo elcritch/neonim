@@ -18,9 +18,9 @@ import ./[ui_linegrid]
 const
   MouseScrollUnit = 10'f32
   PanelHighlightFill* = rgba(248, 210, 120, 36).color
-  UiScaleStep* = 0.05'f32
-  UiScaleMin* = 0.5'f32
-  UiScaleMax* = 4.0'f32
+  FontSizeStep* = 1.0'f32
+  FontSizeMin* = 6.0'f32
+  FontSizeMax* = 72.0'f32
 
 when defined(macosx):
   const DefaultMouseScrollSpeedMultiplier* = 0.1'f32
@@ -295,18 +295,18 @@ proc mouseScrollActions*(
   for _ in 0 ..< xSteps:
     result.add(if x > 0: "left" else: "right")
 
-proc uiScaleDeltaForShortcut*(key: siwin.Key, modifiers: ModifierView): float32 =
+proc fontSizeDeltaForShortcut*(key: siwin.Key, modifiers: ModifierView): float32 =
   let zoomModifierDown =
     (siwin.ModifierKey.system in modifiers) or (siwin.ModifierKey.control in modifiers)
   if not zoomModifierDown:
     return 0.0'f32
   case key
   of siwin.Key.equal:
-    UiScaleStep
+    FontSizeStep
   of siwin.Key.add:
-    UiScaleStep
+    FontSizeStep
   of siwin.Key.minus, siwin.Key.subtract:
-    -UiScaleStep
+    -FontSizeStep
   else:
     0.0'f32
 

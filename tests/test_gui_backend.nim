@@ -105,42 +105,42 @@ suite "gui backend renders":
     check mouseScrollActions(vec2(0, 10), speedMultiplier = 1.0'f32) == @["up"]
     check mouseScrollActions(vec2(0, 10), speedMultiplier = 3.0'f32) ==
       @["up", "up", "up"]
-    check uiScaleDeltaForShortcut(
+    check fontSizeDeltaForShortcut(
       siwin.Key.equal, ModifierView({siwin.ModifierKey.system, siwin.ModifierKey.shift})
-    ) == UiScaleStep
-    check uiScaleDeltaForShortcut(
+    ) == FontSizeStep
+    check fontSizeDeltaForShortcut(
       siwin.Key.equal, ModifierView({siwin.ModifierKey.system})
-    ) == UiScaleStep
-    check uiScaleDeltaForShortcut(
+    ) == FontSizeStep
+    check fontSizeDeltaForShortcut(
       siwin.Key.minus, ModifierView({siwin.ModifierKey.system})
-    ) == -UiScaleStep
-    check uiScaleDeltaForShortcut(
+    ) == -FontSizeStep
+    check fontSizeDeltaForShortcut(
       siwin.Key.add, ModifierView({siwin.ModifierKey.system})
-    ) == UiScaleStep
-    check uiScaleDeltaForShortcut(
+    ) == FontSizeStep
+    check fontSizeDeltaForShortcut(
       siwin.Key.subtract, ModifierView({siwin.ModifierKey.system})
-    ) == -UiScaleStep
-    check uiScaleDeltaForShortcut(
+    ) == -FontSizeStep
+    check fontSizeDeltaForShortcut(
       siwin.Key.equal,
       ModifierView({siwin.ModifierKey.control, siwin.ModifierKey.shift}),
-    ) == UiScaleStep
-    check uiScaleDeltaForShortcut(
+    ) == FontSizeStep
+    check fontSizeDeltaForShortcut(
       siwin.Key.equal, ModifierView({siwin.ModifierKey.control})
-    ) == UiScaleStep
-    check uiScaleDeltaForShortcut(
+    ) == FontSizeStep
+    check fontSizeDeltaForShortcut(
       siwin.Key.minus, ModifierView({siwin.ModifierKey.control})
-    ) == -UiScaleStep
-    check uiScaleDeltaForShortcut(
+    ) == -FontSizeStep
+    check fontSizeDeltaForShortcut(
       siwin.Key.add, ModifierView({siwin.ModifierKey.control})
-    ) == UiScaleStep
-    check uiScaleDeltaForShortcut(
+    ) == FontSizeStep
+    check fontSizeDeltaForShortcut(
       siwin.Key.subtract, ModifierView({siwin.ModifierKey.control})
-    ) == -UiScaleStep
-    check uiScaleDeltaForShortcut(siwin.Key.equal, ModifierView({})) == 0.0'f32
-    check uiScaleDeltaForShortcut(
+    ) == -FontSizeStep
+    check fontSizeDeltaForShortcut(siwin.Key.equal, ModifierView({})) == 0.0'f32
+    check fontSizeDeltaForShortcut(
       siwin.Key.equal, ModifierView({siwin.ModifierKey.shift})
     ) == 0.0'f32
-    check uiScaleDeltaForShortcut(siwin.Key.minus, ModifierView({})) == 0.0'f32
+    check fontSizeDeltaForShortcut(siwin.Key.minus, ModifierView({})) == 0.0'f32
     check keyToNvimInput(siwin.Key.f, ctrlDown = false, altDown = true) == "<A-f>"
     check keyToNvimInput(siwin.Key.b, ctrlDown = false, altDown = true) == "<A-b>"
     check keyToNvimInput(siwin.Key.left, ctrlDown = false, altDown = true) == "<A-Left>"

@@ -17,6 +17,7 @@ import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend]
 const
   EmbeddedWindowIconPng = staticRead("../data/neonim-icon-128.png")
   NeonimWindowBackendName = "siwin"
+  DefaultFontSize = 16.0'f32
 
 type GuiRuntime* = ref object
   config*: GuiConfig
@@ -267,7 +268,7 @@ proc handleCmdShortcut(runtime: GuiRuntime, key: siwin.Key): bool =
     false
 
 proc tryResizeUi*(runtime: GuiRuntime)
-proc adjustUiScale(runtime: GuiRuntime, delta: float32): bool
+proc adjustFontSize(runtime: GuiRuntime, delta: float32): bool
 
 proc resolveDataDir(fontTypeface: string): string =
   let appDir = getAppDir()
@@ -384,10 +385,10 @@ proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView
   let ctrlDown = siwin.ModifierKey.control in modifiers
   let shiftDown = siwin.ModifierKey.shift in modifiers
   let altDown = siwin.ModifierKey.alt in modifiers
-  let uiDelta = uiScaleDeltaForShortcut(key, modifiers)
-  if uiDelta != 0.0'f32:
+  let fontDelta = fontSizeDeltaForShortcut(key, modifiers)
+  if fontDelta != 0.0'f32:
     runtime.state.clearPanelHighlight()
-    discard runtime.adjustUiScale(uiDelta)
+    discard runtime.adjustFontSize(fontDelta)
     return
   if clipboardShortcutModifierDown(modifiers) and runtime.handleCmdShortcut(key):
     return
@@ -403,14 +404,15 @@ proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView
   if input.len > 0:
     discard runtime.safeRequest("nvim_input", rpcPackParams(input))
 
-proc adjustUiScale(runtime: GuiRuntime, delta: float32): bool =
+proc adjustFontSize(runtime: GuiRuntime, delta: float32): bool =
   if delta == 0.0'f32:
     return false
-  let current = figUiScale()
-  let next = min(UiScaleMax, max(UiScaleMin, current + delta))
+  let current = runtime.monoFont.size
+  let next = min(FontSizeMax, max(FontSizeMin, current + delta))
   if abs(next - current) < 0.0001'f32:
     return false
-  setFigUiScale(next)
+  runtime.monoFont.size = next
+  runtime.config.fontSize = next
   let (cellW, cellH) = monoMetrics(runtime.monoFont)
   runtime.cellW = cellW
   runtime.cellH = cellH
@@ -418,7 +420,7 @@ proc adjustUiScale(runtime: GuiRuntime, delta: float32): bool =
   runtime.state.needsRedraw = true
   when not defined(emscripten):
     sleep(8)
-  info "ui scale", previous = current, current = next, cellW = cellW, cellH = cellH
+  info "font size", previous = current, current = next, cellW = cellW, cellH = cellH
   result = true
 
 proc tryResizeUi*(runtime: GuiRuntime) =
@@ -510,6 +512,34 @@ proc scrollDirectionInvertedFromEnv*(): bool =
     warn "invalid scroll invert flag, expected boolean", env = EnvKey, value = raw
     false
 
+proc fontSizeFromEnv*(): float32 =
+  const EnvKey = "NEONIM_FONTSIZE"
+  let raw = getEnv(EnvKey)
+  if raw.len == 0:
+    return DefaultFontSize
+  try:
+    let parsed = raw.parseFloat().float32
+    if parsed > 0:
+      return parsed
+    warn "invalid font size, must be > 0", env = EnvKey, value = raw
+  except ValueError:
+    warn "invalid font size, must be numeric", env = EnvKey, value = raw
+  DefaultFontSize
+
+proc uiScaleFromEnv*(fallbackScale: float32): float32 =
+  const EnvKey = "NEONIM_HDI"
+  let raw = getEnv(EnvKey)
+  if raw.len == 0:
+    return fallbackScale
+  try:
+    let parsed = raw.parseFloat().float32
+    if parsed > 0:
+      return parsed
+    warn "invalid ui scale, must be > 0", env = EnvKey, value = raw
+  except ValueError:
+    warn "invalid ui scale, must be numeric", env = EnvKey, value = raw
+  fallbackScale
+
 proc initGuiRuntime*(
     config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig()
 ): GuiRuntime =
@@ -544,10 +574,7 @@ proc initGuiRuntime*(
   result.lastScroll = vec2(0, 0)
   trySetWindowIcon(result.window)
 
-  if getEnv("HDI") != "":
-    setFigUiScale getEnv("HDI").parseFloat()
-  else:
-    setFigUiScale result.window.contentScale()
+  setFigUiScale uiScaleFromEnv(result.window.contentScale())
   if size != size.scaled():
     result.window.size = size.scaled()
 
@@ -701,9 +728,9 @@ proc guiConfigFromCli*(args: seq[string]): GuiConfig =
     nvimCmd: "nvim",
     nvimArgs: launch.nvimArgs,
     windowTitle: "neonim (" & NeonimWindowBackendName & " + figdraw)",
-    fontTypeface: getEnv("FONT", "HackNerdFont-Regular.ttf"),
+    fontTypeface: getEnv("NEONIM_FONT", "HackNerdFont-Regular.ttf"),
     defaultTypeface: "HackNerdFont-Regular.ttf",
-    fontSize: 16.0'f32,
+    fontSize: fontSizeFromEnv(),
   )
 
 when isMainModule:

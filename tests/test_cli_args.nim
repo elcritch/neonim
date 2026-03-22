@@ -42,6 +42,69 @@ suite "neonim cli args":
     let cfg = guiConfigFromCli(args)
     check cfg.nvimArgs == args
 
+  test "font typeface reads NEONIM_FONT env override":
+    let envKey = "NEONIM_FONT"
+    let hadEnv = existsEnv(envKey)
+    let oldValue = getEnv(envKey)
+    defer:
+      if hadEnv:
+        putEnv(envKey, oldValue)
+      else:
+        delEnv(envKey)
+    putEnv(envKey, "JetBrainsMonoNLNerdFont-Regular.ttf")
+    let cfg = guiConfigFromCli(@["./notes"])
+    check cfg.fontTypeface == "JetBrainsMonoNLNerdFont-Regular.ttf"
+
+  test "font size reads NEONIM_FONTSIZE env override":
+    let envKey = "NEONIM_FONTSIZE"
+    let hadEnv = existsEnv(envKey)
+    let oldValue = getEnv(envKey)
+    defer:
+      if hadEnv:
+        putEnv(envKey, oldValue)
+      else:
+        delEnv(envKey)
+    putEnv(envKey, "19")
+    check fontSizeFromEnv() == 19.0'f32
+    let cfg = guiConfigFromCli(@["./notes"])
+    check cfg.fontSize == 19.0'f32
+
+  test "font size falls back when NEONIM_FONTSIZE is invalid":
+    let envKey = "NEONIM_FONTSIZE"
+    let hadEnv = existsEnv(envKey)
+    let oldValue = getEnv(envKey)
+    defer:
+      if hadEnv:
+        putEnv(envKey, oldValue)
+      else:
+        delEnv(envKey)
+    putEnv(envKey, "not-a-number")
+    check fontSizeFromEnv() == 16.0'f32
+
+  test "ui scale reads NEONIM_HDI env override":
+    let envKey = "NEONIM_HDI"
+    let hadEnv = existsEnv(envKey)
+    let oldValue = getEnv(envKey)
+    defer:
+      if hadEnv:
+        putEnv(envKey, oldValue)
+      else:
+        delEnv(envKey)
+    putEnv(envKey, "1.8")
+    check uiScaleFromEnv(1.0'f32) == 1.8'f32
+
+  test "ui scale falls back when NEONIM_HDI is invalid":
+    let envKey = "NEONIM_HDI"
+    let hadEnv = existsEnv(envKey)
+    let oldValue = getEnv(envKey)
+    defer:
+      if hadEnv:
+        putEnv(envKey, oldValue)
+      else:
+        delEnv(envKey)
+    putEnv(envKey, "bogus")
+    check uiScaleFromEnv(1.5'f32) == 1.5'f32
+
   test "scroll speed multiplier reads env override":
     let envKey = "NEONIM_SCROLL_SPEED_MULTIPLIER"
     let hadEnv = existsEnv(envKey)
