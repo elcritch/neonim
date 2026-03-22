@@ -33,6 +33,7 @@ const
   TopBarInactiveBottomGap = 2.0'f32
   TopBarMacTrafficButtonSize = 12.0'f32
   TopBarMacTrafficButtonGap = 8.0'f32
+  TopBarAppLabelSideSpaceCells = 3.0'f32
   TopBarAppLabel = "Neonim"
 
 type
@@ -156,6 +157,13 @@ proc tabLabelForDir(mainDir: string): string =
 proc appLabelWidth(runtime: GuiRuntime): float32 =
   let advance = max(1.0'f32, runtime.monoFont.size * 0.55'f32)
   runeCount(TopBarAppLabel).float32 * advance
+
+proc macButtonsRightX(): float32 =
+  TopBarLeadingPad + TopBarMacTrafficButtonSize * 3.0'f32 +
+    TopBarMacTrafficButtonGap * 2.0'f32
+
+proc appLabelX(runtime: GuiRuntime): float32 =
+  macButtonsRightX() + runtime.cellW * (TopBarAppLabelSideSpaceCells * 0.5'f32)
 
 proc rpcPackUiAttachParams(
     cols, rows: int, opts: openArray[(string, bool)]
@@ -293,12 +301,32 @@ proc installDirChangedAutocmd(client: NeovimClient, channelId: int64) =
     """
 local channel = ...
 local group = vim.api.nvim_create_augroup('NeonimProcessTabs', { clear = true })
-vim.api.nvim_create_autocmd('DirChanged', {
+local uv = vim.uv or vim.loop
+local function neonim_main_dir()
+  local cwd = vim.fn.getcwd()
+  local name = vim.api.nvim_buf_get_name(0)
+  if name ~= nil and name ~= '' and uv ~= nil and uv.fs_stat ~= nil then
+    local st = uv.fs_stat(name)
+    if st ~= nil and st.type == 'directory' then
+      return vim.fn.fnamemodify(name, ':p')
+    end
+    local parent = vim.fn.fnamemodify(name, ':p:h')
+    if parent ~= nil and parent ~= '' then
+      return parent
+    end
+  end
+  return cwd
+end
+
+vim.api.nvim_create_autocmd({ 'DirChanged', 'BufEnter' }, {
   group = group,
   callback = function()
-    vim.rpcnotify(channel, 'neonim_dir_changed', vim.fn.getcwd())
+    vim.rpcnotify(channel, 'neonim_dir_changed', neonim_main_dir())
   end,
 })
+vim.schedule(function()
+  vim.rpcnotify(channel, 'neonim_dir_changed', neonim_main_dir())
+end)
 """
   discard
     client.callAndWait("nvim_exec_lua", rpcPackParams(lua, channelId), timeout = 1.0)
@@ -338,15 +366,21 @@ proc createProcessTab(
     elif methodName == NvimDirChangedMethod:
       try:
         var args: seq[string] = @[]
-        rpcUnpack(params, args)
-        if args.len == 0:
+        var nextRaw = ""
+        try:
+          rpcUnpack(params, args)
+          if args.len > 0:
+            nextRaw = args[0]
+        except CatchableError:
+          rpcUnpack(params, nextRaw)
+        if nextRaw.len == 0:
           return
-        let nextDir = normalizedExistingDir(args[0], tabRef.mainDir)
+        let nextDir = normalizedExistingDir(nextRaw, tabRef.mainDir)
         if nextDir == tabRef.mainDir:
           return
         tabRef.mainDir = nextDir
         tabRef.label = tabLabelForDir(nextDir)
-        if runtime.activeTabRef() == tabRef and not tabRef.state.isNil:
+        if not tabRef.state.isNil:
           tabRef.state.needsRedraw = true
       except CatchableError as err:
         warn "failed to update tab dir from nvim notification", error = err.msg
@@ -406,11 +440,8 @@ proc removeDeadTabs(runtime: GuiRuntime) =
 
 proc tabStripStartX(runtime: GuiRuntime): float32 =
   when defined(macosx):
-    let buttonsRight =
-      TopBarLeadingPad + TopBarMacTrafficButtonSize * 3.0'f32 +
-      TopBarMacTrafficButtonGap * 2.0'f32
-    let appLabelX = buttonsRight + runtime.cellW * 3.0'f32
-    appLabelX + runtime.appLabelWidth() + TopBarTabGap
+    macButtonsRightX() + runtime.cellW * TopBarAppLabelSideSpaceCells +
+      runtime.appLabelWidth() + TopBarTabGap
   else:
     TopBarLeadingPad
 
@@ -587,10 +618,6 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         ),
       )
   else:
-    let buttonsRight =
-      TopBarLeadingPad + TopBarMacTrafficButtonSize * 3.0'f32 +
-      TopBarMacTrafficButtonGap * 2.0'f32
-    let appLabelX = buttonsRight + runtime.cellW * 3.0'f32
     let appLabelY =
       TopBarTabY + max(0.0'f32, (TopBarTabHeight - runtime.monoFont.size) * 0.5'f32) -
       TopBarTextLift
@@ -599,7 +626,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       TopBarAppLabel,
       runtime.monoFont,
       rgba(231, 238, 248, 248).color,
-      appLabelX,
+      runtime.appLabelX(),
       appLabelY,
       runtime.appLabelWidth(),
     )
@@ -1447,8 +1474,13 @@ proc uiScaleFromEnv*(fallbackScale: float32): float32 =
   fallbackScale
 
 proc tabColorFromEnv*(): tuple[enabled: bool, r, g, b: int] =
-  const EnvKey = "NEONIM_TAB_COLOR"
-  let raw = getEnv(EnvKey)
+  const EnvKey = "NEONIM_TAB_ACCENT_COLOR"
+  const LegacyEnvKey = "NEONIM_TAB_COLOR"
+  var usedKey = EnvKey
+  var raw = getEnv(EnvKey)
+  if raw.len == 0:
+    usedKey = LegacyEnvKey
+    raw = getEnv(LegacyEnvKey)
   if raw.len == 0:
     return (false, 0, 0, 0)
 
@@ -1473,13 +1505,13 @@ proc tabColorFromEnv*(): tuple[enabled: bool, r, g, b: int] =
       let g = parts[1].strip().parseInt()
       let b = parts[2].strip().parseInt()
       if r < 0 or r > 255 or g < 0 or g > 255 or b < 0 or b > 255:
-        warn "invalid tab color channel, expected 0..255", env = EnvKey, value = raw
+        warn "invalid tab color channel, expected 0..255", env = usedKey, value = raw
         return (false, 0, 0, 0)
       return (true, r, g, b)
     except ValueError:
       discard
 
-  warn "invalid tab color, expected #RRGGBB or R,G,B", env = EnvKey, value = raw
+  warn "invalid tab color, expected #RRGGBB or R,G,B", env = usedKey, value = raw
   (false, 0, 0, 0)
 
 proc initGuiRuntime*(
