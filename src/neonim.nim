@@ -484,6 +484,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
   let textInset = TopBarTextInset
   let tabTopStrokeInset = 4.0'f32
   let buttonTopStrokeInset = 3.0'f32
+  let activeBlendColor = rgba(236, 243, 252, 236).color
   let z = 2.ZLevel
   let barH = runtime.topBarHeight
 
@@ -527,7 +528,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       childCount: 0,
       zlevel: z,
       screenBox: rect(0, barH - 1, logicalSize.x, 1),
-      fill: rgba(8, 12, 18, 20).color,
+      fill: rgba(8, 12, 18, 0).color,
     ),
   )
 
@@ -733,7 +734,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           childCount: 0,
           zlevel: z,
           screenBox: rect(box.x, box.y + box.h - 1, box.w, mergeH),
-          fill: rgba(241, 247, 255, 244).color,
+          fill: activeBlendColor,
         ),
       )
     else:
@@ -850,7 +851,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           childCount: 0,
           zlevel: z,
           screenBox: rect(0, contentTopY, activeTabBox.x, separatorH),
-          fill: rgba(246, 250, 255, 184).color,
+          fill: activeBlendColor,
         ),
       )
     let activeRight = activeTabBox.x + activeTabBox.w
@@ -863,7 +864,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           zlevel: z,
           screenBox:
             rect(activeRight, contentTopY, logicalSize.x - activeRight, separatorH),
-          fill: rgba(246, 250, 255, 184).color,
+          fill: activeBlendColor,
         ),
       )
     discard renders.addRoot(
@@ -873,7 +874,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         childCount: 0,
         zlevel: z,
         screenBox: rect(activeTabBox.x, contentTopY, activeTabBox.w, separatorH),
-        fill: rgba(246, 250, 255, 252).color,
+        fill: activeBlendColor,
       ),
     )
   else:
@@ -884,7 +885,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         childCount: 0,
         zlevel: z,
         screenBox: rect(0, contentTopY, logicalSize.x, separatorH),
-        fill: rgba(246, 250, 255, 184).color,
+        fill: activeBlendColor,
       ),
     )
 
