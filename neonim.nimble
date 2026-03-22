@@ -11,7 +11,7 @@ requires "nim >= 2.2.6"
 requires "msgpack4nim"
 requires "chronicles"
 requires "https://github.com/elcritch/figdraw >= 0.22.7"
-requires "https://github.com/elcritch/siwin#fix-change-to-method"
+requires "https://github.com/elcritch/siwin#custom-titlebars"
 requires "libbacktrace"
 
 feature "references":

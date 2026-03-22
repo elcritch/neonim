@@ -217,7 +217,7 @@ proc initRpcState(client: NeovimClient) =
   when not defined(windows):
     client.socketDisconnected = false
 
-proc start*(client: NeovimClient, nvimCmd = "nvim", args: seq[string] = @[]) =
+proc start*(client: NeovimClient, nvimCmd = "nvim", args: seq[string] = @[], cwd = "") =
   if client.transport != ntkNone:
     raise newException(NeovimError, "client already started")
 
@@ -251,7 +251,11 @@ proc start*(client: NeovimClient, nvimCmd = "nvim", args: seq[string] = @[]) =
     return
 
   let fullArgs = @["--embed"] & args
-  client.process = startProcess(nvimCmd, args = fullArgs, options = {poUsePath})
+  if cwd.len > 0:
+    client.process =
+      startProcess(nvimCmd, args = fullArgs, options = {poUsePath}, workingDir = cwd)
+  else:
+    client.process = startProcess(nvimCmd, args = fullArgs, options = {poUsePath})
   client.inStream = client.process.inputStream()
   when not defined(windows):
     client.outFd = client.process.outputHandle()
