@@ -349,7 +349,7 @@ proc removeDeadTabs(runtime: GuiRuntime) =
     runtime.hoverTab = -1
   runtime.syncActiveAliases()
 
-proc tabStripStartX(): float32 =
+proc tabStripStartX(runtime: GuiRuntime): float32 =
   when defined(macosx):
     TopBarLeadingPad + TopBarLeadingReserveMac
   else:
@@ -362,15 +362,19 @@ proc tabWidthForLabel(runtime: GuiRuntime, label: string): float32 =
 proc tabRects(
     runtime: GuiRuntime, logicalWidth: float32, newTabRect: var Rect
 ): seq[Rect] =
-  var x = tabStripStartX()
+  let tabGap = TopBarTabGap
+  let tabY = TopBarTabY
+  let tabH = TopBarTabHeight
+  let newTabW = TopBarNewTabWidth
+  var x = runtime.tabStripStartX()
   result = @[]
   for tab in runtime.tabs:
     let w = runtime.tabWidthForLabel(tab.label)
-    if x + w > logicalWidth - TopBarNewTabWidth - TopBarTabGap:
+    if x + w > logicalWidth - newTabW - tabGap:
       break
-    result.add(rect(x, TopBarTabY, w, TopBarTabHeight))
-    x += w + TopBarTabGap
-  newTabRect = rect(x, TopBarTabY + 1, TopBarNewTabWidth, TopBarNewTabWidth)
+    result.add(rect(x, tabY, w, tabH))
+    x += w + tabGap
+  newTabRect = rect(x, TopBarTabY + 1, newTabW, newTabW)
 
 proc pointInRect(p: Vec2, r: Rect): bool =
   p.x >= r.x and p.x < (r.x + r.w) and p.y >= r.y and p.y < (r.y + r.h)
@@ -396,13 +400,15 @@ proc addSingleLineText(
 ) =
   if text.len == 0 or maxWidth <= 1:
     return
-  let maxRunes = max(1, int((maxWidth / max(1.0'f32, font.size * 0.55'f32))))
+  let advance = max(1.0'f32, font.size * 0.55'f32)
+  let maxRunes = max(1, int(maxWidth / advance))
   var glyphs: seq[(Rune, Vec2)] = @[]
   var count = 0
   for r in text.runes:
     if count >= maxRunes:
       break
-    glyphs.add((r, vec2(x + count.float32 * font.size * 0.55'f32, y)))
+    # Glyph positions are relative to this text node's origin.
+    glyphs.add((r, vec2(count.float32 * advance, 0)))
     inc count
   if glyphs.len == 0:
     return
@@ -425,6 +431,7 @@ proc offsetRendersY(renders: var Renders, yOffset: float32) =
       list.nodes[i].screenBox.y += yOffset
 
 proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) =
+  let textInset = TopBarTextInset
   let z = 2.ZLevel
   discard renders.addRoot(
     z,
@@ -448,9 +455,11 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
   )
 
   when not defined(macosx):
-    let y = (runtime.topBarHeight - 12) / 2
+    let buttonSize = 12.0'f32
+    let buttonGap = 8.0'f32
+    let y = (runtime.topBarHeight - buttonSize) / 2
     for i in 0 .. 2:
-      let x = TopBarLeadingPad + i.float32 * 20
+      let x = TopBarLeadingPad + i.float32 * (buttonSize + buttonGap)
       let fill =
         if i == 0:
           rgba(214, 88, 88, 255).color
@@ -464,7 +473,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
           kind: nkRectangle,
           childCount: 0,
           zlevel: z,
-          screenBox: rect(x, y, 12, 12),
+          screenBox: rect(x, y, buttonSize, buttonSize),
           fill: fill,
         ),
       )
@@ -488,9 +497,9 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       tab.label,
       runtime.monoFont,
       rgba(228, 236, 250, 255).color,
-      box.x + TopBarTextInset,
+      box.x + textInset,
       box.y + 11,
-      max(20, box.w - TopBarTextInset * 2),
+      max(20, box.w - textInset * 2),
     )
 
   let plusFill =
@@ -1035,7 +1044,6 @@ proc initGuiRuntime*(
   result.mouseDown = {}
   result.modifiers = {}
   result.lastScroll = vec2(0, 0)
-  result.topBarHeight = TopBarHeight
   result.hoverTab = -1
   result.hoverNewTab = false
   result.activeTab = -1
@@ -1044,6 +1052,7 @@ proc initGuiRuntime*(
   trySetWindowIcon(result.window)
 
   setFigUiScale uiScaleFromEnv(result.window.contentScale())
+  result.topBarHeight = TopBarHeight
   if size != size.scaled():
     result.window.size = size.scaled()
 
