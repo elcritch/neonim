@@ -14,6 +14,10 @@ import std/[algorithm, sequtils, strutils, os]
 task build, "build neonim":
   exec("nim c " & getEnv("NIMFLAGS") & " -d:release -o:bin/neonim src/neonim.nim")
 
+task install, "install neonim to nimble bin path":
+  buildTask()
+  cpFile("bin/neonim", getHomeDir() / ".nimble" / "bin" / "neonim")
+
 task test, "run unit test":
   for testFile in listFiles("tests/"):
     if testFile.endsWith(".nim") and testFile.startsWith("t"):
