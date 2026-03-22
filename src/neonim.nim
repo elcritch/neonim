@@ -479,6 +479,8 @@ proc offsetRendersY(renders: var Renders, yOffset: float32) =
 
 proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) =
   let textInset = TopBarTextInset
+  let tabTopStrokeInset = 4.0'f32
+  let buttonTopStrokeInset = 3.0'f32
   let z = 2.ZLevel
   let barH = runtime.topBarHeight
 
@@ -711,7 +713,12 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         kind: nkRectangle,
         childCount: 0,
         zlevel: z,
-        screenBox: rect(box.x, box.y, box.w, 1),
+        screenBox: rect(
+          box.x + tabTopStrokeInset,
+          box.y,
+          max(1, box.w - tabTopStrokeInset * 2),
+          1,
+        ),
         fill: tabStroke,
       ),
     )
@@ -780,7 +787,12 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       kind: nkRectangle,
       childCount: 0,
       zlevel: z,
-      screenBox: rect(newTabRect.x, newTabRect.y, newTabRect.w, 1),
+      screenBox: rect(
+        newTabRect.x + buttonTopStrokeInset,
+        newTabRect.y,
+        max(1, newTabRect.w - buttonTopStrokeInset * 2),
+        1,
+      ),
       fill: rgba(246, 250, 255, 98).color,
     ),
   )
