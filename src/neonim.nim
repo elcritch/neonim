@@ -21,13 +21,13 @@ const
   NvimDirChangedMethod = "neonim_dir_changed"
   DefaultFontSize = 16.0'f32
   TopBarHeight = 35.0'f32
-  TopBarTabGap = 10.0'f32
+  TopBarTabGap = 6.0'f32
   TopBarTabMinWidth = 180.0'f32
   TopBarTabMaxWidth = 360.0'f32
   TopBarTabHeight = 29.0'f32
   TopBarTabY = 4.0'f32
   TopBarLeadingPad = 20.0'f32
-  TopBarLeadingReserveMac = 150.0'f32
+  TopBarLeadingReserveMac = 58.0'f32
   TopBarNewTabWidth = 29.0'f32
   TopBarTextInset = 12.0'f32
   TopBarTextLift = 2.5'f32
@@ -398,7 +398,7 @@ proc removeDeadTabs(runtime: GuiRuntime) =
 
 proc tabStripStartX(runtime: GuiRuntime): float32 =
   when defined(macosx):
-    TopBarLeadingPad + TopBarLeadingReserveMac
+    TopBarLeadingPad + TopBarLeadingReserveMac + runtime.cellW * 3.0'f32
   else:
     TopBarLeadingPad
 
@@ -495,6 +495,28 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       zlevel: z,
       screenBox: rect(0, 0, logicalSize.x, barH),
       fill: rgba(62, 65, 72, 255).color,
+    ),
+  )
+  let tabBarY = TopBarTabY + TopBarTabHeight - 1
+  let tabBarH = max(1.0'f32, barH - tabBarY - 1)
+  discard renders.addRoot(
+    z,
+    Fig(
+      kind: nkRectangle,
+      childCount: 0,
+      zlevel: z,
+      screenBox: rect(0, tabBarY, logicalSize.x, tabBarH),
+      fill: rgba(50, 54, 63, 255).color,
+    ),
+  )
+  discard renders.addRoot(
+    z,
+    Fig(
+      kind: nkRectangle,
+      childCount: 0,
+      zlevel: z,
+      screenBox: rect(0, tabBarY, logicalSize.x, 1),
+      fill: rgba(118, 126, 140, 44).color,
     ),
   )
   discard renders.addRoot(
@@ -671,7 +693,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         zlevel: z,
         screenBox: box,
         fill: tabFill,
-        corners: [8, 8, 5, 5],
+        corners: [8, 8, 0, 0],
         shadows: tabShadows,
       ),
     )
@@ -687,16 +709,29 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
         fill: tabStroke,
       ),
     )
-    discard renders.addRoot(
-      z,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: z,
-        screenBox: rect(box.x, box.y + box.h - 1, box.w, 1),
-        fill: rgba(12, 17, 24, 34).color,
-      ),
-    )
+    if isActive:
+      let mergeH = max(1.0'f32, barH - (box.y + box.h))
+      discard renders.addRoot(
+        z,
+        Fig(
+          kind: nkRectangle,
+          childCount: 0,
+          zlevel: z,
+          screenBox: rect(box.x, box.y + box.h - 1, box.w, mergeH),
+          fill: rgba(227, 236, 248, 220).color,
+        ),
+      )
+    else:
+      discard renders.addRoot(
+        z,
+        Fig(
+          kind: nkRectangle,
+          childCount: 0,
+          zlevel: z,
+          screenBox: rect(box.x, box.y + box.h - 1, box.w, 1),
+          fill: rgba(12, 17, 24, 34).color,
+        ),
+      )
     renders.addSingleLineText(
       z,
       tab.label,
@@ -742,7 +777,7 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       zlevel: z,
       screenBox: newTabRect,
       fill: plusFill,
-      corners: [6, 6, 6, 6],
+      corners: [6, 6, 0, 0],
       shadows: plusShadows,
     ),
   )
