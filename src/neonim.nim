@@ -555,11 +555,16 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       )
 
   var newTabRect = rect(0, 0, 0, 0)
+  var activeTabBox = rect(0, 0, 0, 0)
+  var hasActiveTab = false
   let rects = runtime.tabRects(logicalSize.x, newTabRect)
   for idx, box in rects:
     let tab = runtime.tabs[idx]
     let isActive = idx == runtime.activeTab
     let isHover = idx == runtime.hoverTab
+    if isActive:
+      activeTabBox = box
+      hasActiveTab = true
     let tabTextY =
       box.y + max(0.0'f32, (box.h - runtime.monoFont.size) * 0.5'f32) - TopBarTextLift
     let tabFill =
@@ -816,6 +821,54 @@ proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) 
       TopBarTextLift,
     10.0'f32,
   )
+
+  # Content-top separator: white line with an active-tab blend segment.
+  let contentTopY = barH
+  if hasActiveTab:
+    if activeTabBox.x > 0:
+      discard renders.addRoot(
+        z,
+        Fig(
+          kind: nkRectangle,
+          childCount: 0,
+          zlevel: z,
+          screenBox: rect(0, contentTopY, activeTabBox.x, 1),
+          fill: rgba(236, 242, 250, 66).color,
+        ),
+      )
+    let activeRight = activeTabBox.x + activeTabBox.w
+    if activeRight < logicalSize.x:
+      discard renders.addRoot(
+        z,
+        Fig(
+          kind: nkRectangle,
+          childCount: 0,
+          zlevel: z,
+          screenBox: rect(activeRight, contentTopY, logicalSize.x - activeRight, 1),
+          fill: rgba(236, 242, 250, 66).color,
+        ),
+      )
+    discard renders.addRoot(
+      z,
+      Fig(
+        kind: nkRectangle,
+        childCount: 0,
+        zlevel: z,
+        screenBox: rect(activeTabBox.x, contentTopY, activeTabBox.w, 1),
+        fill: rgba(233, 241, 251, 186).color,
+      ),
+    )
+  else:
+    discard renders.addRoot(
+      z,
+      Fig(
+        kind: nkRectangle,
+        childCount: 0,
+        zlevel: z,
+        screenBox: rect(0, contentTopY, logicalSize.x, 1),
+        fill: rgba(236, 242, 250, 66).color,
+      ),
+    )
 
 proc redrawGui*(runtime: GuiRuntime) =
   if runtime.state.isNil or runtime.hl.isNil:
