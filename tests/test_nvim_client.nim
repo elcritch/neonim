@@ -186,6 +186,30 @@ suite "neovim client":
         check getVarResp.error.isNilValue
         check rpcUnpack[string](getVarResp.result) == "ok"
 
+  test "nvim_exec_lua accepts array args":
+    when defined(windows):
+      check true
+    else:
+      if findExe("nvim").len == 0:
+        echo "SKIP: `nvim` not found in PATH"
+        check true
+      else:
+        let client = newNeovimClient()
+        defer:
+          client.stop()
+
+        client.start(
+          nvimCmd = "nvim",
+          args = @["--headless", "-u", "NONE", "-i", "NONE", "--noplugin", "-n"],
+        )
+        discard client.discoverMetadata()
+
+        let resp = client.callAndWait(
+          "nvim_exec_lua", rpcPackParams("return ...", @["ok"]), timeout = 10.0
+        )
+        check resp.error.isNilValue
+        check rpcUnpack[string](resp.result) == "ok"
+
   test "nvim_command executes ex":
     when defined(windows):
       check true

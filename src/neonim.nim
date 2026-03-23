@@ -88,7 +88,6 @@ type
     tabShadeR: int
     tabShadeG: int
     tabShadeB: int
-    lastTabDirSyncAt: float64
     state*: LineGridStateRef
     hl*: HlStateRef
     frameIdle*: int
@@ -274,14 +273,11 @@ proc syncActiveAliases(runtime: GuiRuntime) =
   runtime.state = tab.state
   runtime.hl = tab.hl
 
-proc syncActiveTabDir(runtime: GuiRuntime, force = false)
-
 proc selectTab(runtime: GuiRuntime, idx: int): bool =
   if idx < 0 or idx >= runtime.tabs.len:
     return false
   runtime.activeTab = idx
   runtime.syncActiveAliases()
-  runtime.syncActiveTabDir(force = true)
   if not runtime.state.isNil:
     runtime.state.needsRedraw = true
   result = true
@@ -295,39 +291,6 @@ proc normalizedExistingDir(path: string, fallbackDir: string): string =
   if candidate.len > 0 and dirExists(candidate):
     return normalizedPath(candidate)
   result = normalizedPath(fallbackDir)
-
-proc currentDirFromNvim(client: NeovimClient, fallbackDir: string): string =
-  try:
-    let resp =
-      client.callAndWait("nvim_eval", rpcPackParams("getcwd()"), timeout = 0.75)
-    if not resp.error.isNilValue:
-      return normalizedPath(fallbackDir)
-    var dir = ""
-    rpcUnpack(resp.result, dir)
-    return normalizedExistingDir(dir, fallbackDir)
-  except CatchableError:
-    normalizedPath(fallbackDir)
-
-proc currentMainDirFromNvim(client: NeovimClient, fallbackDir: string): string =
-  try:
-    let resp =
-      client.callAndWait("nvim_eval", rpcPackParams("expand('%:p')"), timeout = 0.75)
-    if not resp.error.isNilValue:
-      return currentDirFromNvim(client, fallbackDir)
-    var path = ""
-    rpcUnpack(resp.result, path)
-    if path.len > 0:
-      let expanded = expandFilename(path)
-      if dirExists(expanded):
-        return normalizedPath(expanded)
-      if fileExists(expanded):
-        return normalizedPath(parentDir(expanded))
-      let parent = parentDir(expanded)
-      if parent.len > 0 and parent != ".":
-        return normalizedPath(parent)
-  except CatchableError:
-    discard
-  currentDirFromNvim(client, fallbackDir)
 
 proc installDirChangedAutocmd(client: NeovimClient, channelId: int64) =
   let lua =
@@ -361,8 +324,15 @@ vim.schedule(function()
   vim.rpcnotify(channel, 'neonim_dir_changed', neonim_main_dir())
 end)
 """
-  discard
-    client.callAndWait("nvim_exec_lua", rpcPackParams(lua, channelId), timeout = 1.0)
+  let resp =
+    client.callAndWait("nvim_exec_lua", rpcPackParams(lua, @[channelId]), timeout = 1.0)
+  if not resp.error.isNilValue:
+    var errText = "unknown error"
+    try:
+      errText = rpcUnpack[string](resp.error)
+    except CatchableError:
+      discard
+    raise newException(NeovimError, "nvim_exec_lua failed: " & errText)
 
 proc createProcessTab(
     runtime: GuiRuntime, mainDir: string, nvimArgs: seq[string]
@@ -386,7 +356,7 @@ proc createProcessTab(
   new(result)
   result.id = runtime.nextTabId
   inc runtime.nextTabId
-  result.mainDir = currentDirFromNvim(client, tabDir)
+  result.mainDir = tabDir
   result.label = tabLabelForDir(result.mainDir)
   result.client = client
   result.state = stateRef
@@ -475,26 +445,9 @@ proc closeTab(runtime: GuiRuntime, idx: int): bool =
   runtime.hoverTab = -1
   runtime.hoverNewTab = false
   runtime.syncActiveAliases()
-  runtime.syncActiveTabDir(force = true)
   if not runtime.state.isNil:
     runtime.state.needsRedraw = true
   result = true
-
-proc syncActiveTabDir(runtime: GuiRuntime, force = false) =
-  let tab = runtime.activeTabRef()
-  if tab.isNil or tab.client.isNil or (not tab.client.isRunning()):
-    return
-  let nowTs = epochTime()
-  if not force and (nowTs - runtime.lastTabDirSyncAt) < 0.35:
-    return
-  runtime.lastTabDirSyncAt = nowTs
-  let nextDir = currentMainDirFromNvim(tab.client, tab.mainDir)
-  if nextDir == tab.mainDir:
-    return
-  tab.mainDir = nextDir
-  tab.label = tabLabelForDir(nextDir)
-  if not tab.state.isNil:
-    tab.state.needsRedraw = true
 
 proc removeDeadTabs(runtime: GuiRuntime) =
   var i = 0
@@ -1522,7 +1475,6 @@ proc stepGui*(runtime: GuiRuntime): bool =
   for tab in runtime.tabs:
     if not tab.isNil and not tab.client.isNil:
       tab.client.poll()
-  runtime.syncActiveTabDir()
   runtime.removeDeadTabs()
   if runtime.tabs.len == 0:
     return false
