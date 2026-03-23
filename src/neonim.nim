@@ -520,6 +520,38 @@ proc topBarHit(
     return (-1, true, -1)
   (-1, false, -1)
 
+proc trimFrontWithPrefix(text: string, maxRunes: int, prefix = "…"): string =
+  if maxRunes <= 0 or text.len == 0:
+    return ""
+
+  var textRunes: seq[Rune] = @[]
+  for r in text.runes:
+    textRunes.add(r)
+  if textRunes.len <= maxRunes:
+    return text
+
+  var prefixRunes: seq[Rune] = @[]
+  for r in prefix.runes:
+    prefixRunes.add(r)
+  if prefixRunes.len == 0:
+    let startIdx = max(0, textRunes.len - maxRunes)
+    for i in startIdx ..< textRunes.len:
+      result.add(textRunes[i])
+    return
+
+  if maxRunes <= prefixRunes.len:
+    let startIdx = prefixRunes.len - maxRunes
+    for i in startIdx ..< prefixRunes.len:
+      result.add(prefixRunes[i])
+    return
+
+  for r in prefixRunes:
+    result.add(r)
+  let tailLen = maxRunes - prefixRunes.len
+  let tailStart = textRunes.len - tailLen
+  for i in tailStart ..< textRunes.len:
+    result.add(textRunes[i])
+
 proc addSingleLineText(
     renders: var Renders,
     zlevel: ZLevel,
@@ -532,9 +564,10 @@ proc addSingleLineText(
     return
   let advance = max(1.0'f32, font.size * 0.55'f32)
   let maxRunes = max(1, int(maxWidth / advance))
+  let clippedText = trimFrontWithPrefix(text, maxRunes)
   var glyphs: seq[(Rune, Vec2)] = @[]
   var count = 0
-  for r in text.runes:
+  for r in clippedText.runes:
     if count >= maxRunes:
       break
     # Glyph positions are relative to this text node's origin.
