@@ -297,24 +297,11 @@ proc installDirChangedAutocmd(client: NeovimClient, channelId: int64) =
     """
 local channel = ...
 local group = vim.api.nvim_create_augroup('NeonimProcessTabs', { clear = true })
-local uv = vim.uv or vim.loop
 local function neonim_main_dir()
-  local cwd = vim.fn.getcwd()
-  local name = vim.api.nvim_buf_get_name(0)
-  if name ~= nil and name ~= '' and uv ~= nil and uv.fs_stat ~= nil then
-    local st = uv.fs_stat(name)
-    if st ~= nil and st.type == 'directory' then
-      return vim.fn.fnamemodify(name, ':p')
-    end
-    local parent = vim.fn.fnamemodify(name, ':p:h')
-    if parent ~= nil and parent ~= '' then
-      return parent
-    end
-  end
-  return cwd
+  return vim.fn.getcwd()
 end
 
-vim.api.nvim_create_autocmd({ 'DirChanged', 'BufEnter' }, {
+vim.api.nvim_create_autocmd({ 'DirChanged' }, {
   group = group,
   callback = function()
     vim.rpcnotify(channel, 'neonim_dir_changed', neonim_main_dir())
