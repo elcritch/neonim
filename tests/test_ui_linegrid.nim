@@ -288,6 +288,65 @@ suite "ui linegrid":
     check state.cursorRow == 1
     check state.cursorCol == 0
 
+  test "mode_info_set and mode_change update cursor style":
+    var state = initLineGridState(2, 2)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+
+    let params = packParams(
+      proc(s: var MsgStream) =
+        s.pack_array(2)
+        packEvent(
+          s,
+          "mode_info_set",
+          proc(s: var MsgStream) =
+            s.pack_array(2)
+            s.pack(true)
+            s.pack_array(2)
+            s.pack_map(4)
+            s.pack("cursor_shape")
+            s.pack("block")
+            s.pack("cell_percentage")
+            s.pack(100)
+            s.pack("attr_id")
+            s.pack(0)
+            s.pack("short_name")
+            s.pack("n")
+            s.pack_map(6)
+            s.pack("cursor_shape")
+            s.pack("vertical")
+            s.pack("cell_percentage")
+            s.pack(25)
+            s.pack("blinkwait")
+            s.pack(700)
+            s.pack("blinkon")
+            s.pack(300)
+            s.pack("attr_id")
+            s.pack(9)
+            s.pack("short_name")
+            s.pack("i"),
+        )
+        packEvent(
+          s,
+          "mode_change",
+          proc(s: var MsgStream) =
+            s.pack_array(2)
+            s.pack("insert")
+            s.pack(1),
+        )
+    )
+    handleRedraw(state, hl, params)
+
+    check state.cursorStyleEnabled
+    check state.currentMode == "insert"
+    check state.currentModeIdx == 1
+    check state.cursorStyles.len == 2
+    check state.currentCursorStyle().shape == csVertical
+    check state.currentCursorStyle().cellPercentage == 25
+    check state.currentCursorStyle().blinkwait == 700
+    check state.currentCursorStyle().blinkon == 300
+    check state.currentCursorStyle().attrId == 9
+    check state.currentCursorStyle().shortName == "i"
+
   test "win_pos stores grid bounds and cursor uses active grid":
     var state = initLineGridState(8, 20)
     var hl = HlState(attrs: initTable[int64, HlAttr]())
@@ -430,6 +489,31 @@ suite "ui linegrid":
     check hl.attrs[2].bg.isSome
     check hl.attrs[2].fg.get == rgba(0'u8, 0'u8, 255'u8, 255).color
     check hl.attrs[2].bg.get == rgba(0'u8, 255'u8, 0'u8, 255).color
+
+  test "hl_attr_define records reverse attrs":
+    var state = initLineGridState(1, 1)
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+
+    let params = packRedraw(
+      proc(s: var MsgStream) =
+        packEvent(
+          s,
+          "hl_attr_define",
+          proc(s: var MsgStream) =
+            s.pack_array(4)
+            s.pack(3)
+            s.pack_map(1)
+            s.pack("reverse")
+            s.pack(true)
+            var p: pointer = nil
+            s.pack(p)
+            s.pack(p),
+        )
+    )
+    handleRedraw(state, hl, params)
+
+    check hl.attrs.hasKey(3)
+    check hl.attrs[3].reverse
 
   test "flush marks state as needing redraw":
     var state = initLineGridState(1, 1)

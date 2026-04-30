@@ -91,6 +91,11 @@ type
     state*: LineGridStateRef
     hl*: HlStateRef
     frameIdle*: int
+    cursorBlinkStart*: float
+    cursorBlinkRow*: int
+    cursorBlinkCol*: int
+    cursorBlinkModeIdx*: int
+    cursorVisible*: bool
 
 proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] =
   let cols = max(1, int(size.x / cellW))
@@ -272,6 +277,11 @@ proc syncActiveAliases(runtime: GuiRuntime) =
   runtime.client = tab.client
   runtime.state = tab.state
   runtime.hl = tab.hl
+  runtime.cursorBlinkStart = epochTime()
+  runtime.cursorBlinkRow = -1
+  runtime.cursorBlinkCol = -1
+  runtime.cursorBlinkModeIdx = -1
+  runtime.cursorVisible = true
 
 proc selectTab(runtime: GuiRuntime, idx: int): bool =
   if idx < 0 or idx >= runtime.tabs.len:
@@ -1079,6 +1089,7 @@ proc redrawGui*(runtime: GuiRuntime) =
     runtime.hl[],
     runtime.cellW,
     runtime.cellH,
+    runtime.cursorVisible,
   )
   renders.offsetRendersY(runtime.topBarHeight)
   runtime.renderTopBar(renders, sz)
@@ -1092,6 +1103,42 @@ proc redrawGui*(runtime: GuiRuntime) =
   )
   runtime.renderer.renderFrame(renders, sz)
   runtime.renderer.endFrame()
+
+proc updateCursorBlink(runtime: GuiRuntime): bool =
+  if runtime.state.isNil:
+    runtime.cursorVisible = true
+    return false
+  let state = runtime.state[]
+  if state.cursorRow != runtime.cursorBlinkRow or
+      state.cursorCol != runtime.cursorBlinkCol or
+      state.currentModeIdx != runtime.cursorBlinkModeIdx:
+    runtime.cursorBlinkRow = state.cursorRow
+    runtime.cursorBlinkCol = state.cursorCol
+    runtime.cursorBlinkModeIdx = state.currentModeIdx
+    runtime.cursorBlinkStart = epochTime()
+    if not runtime.cursorVisible:
+      runtime.cursorVisible = true
+      return true
+
+  if not state.cursorBlinkActive():
+    if not runtime.cursorVisible:
+      runtime.cursorVisible = true
+      return true
+    return false
+
+  let style = state.currentCursorStyle()
+  let elapsedMs = max(0.0, (epochTime() - runtime.cursorBlinkStart) * 1000.0)
+  let shouldShow =
+    if elapsedMs < style.blinkwait.float:
+      true
+    else:
+      let cycle = style.blinkon + style.blinkoff
+      let phase = int(elapsedMs - style.blinkwait.float) mod cycle
+      phase < style.blinkon
+  if shouldShow != runtime.cursorVisible:
+    runtime.cursorVisible = shouldShow
+    return true
+  false
 
 proc safeRequest(
     runtime: GuiRuntime, methodName: string, params: RpcParamsBuffer
@@ -1499,6 +1546,8 @@ proc stepGui*(runtime: GuiRuntime): bool =
   if runtime.tabs.len == 0:
     return false
   runtime.handleGuiTest()
+  if runtime.updateCursorBlink() and not runtime.state.isNil:
+    runtime.state.needsRedraw = true
   var didRedraw = false
   if (not runtime.state.isNil) and runtime.state.needsRedraw:
     runtime.redrawGui()
@@ -1507,10 +1556,14 @@ proc stepGui*(runtime: GuiRuntime): bool =
     runtime.frameIdle = 0
   when not defined(emscripten):
     if not didRedraw:
-      runtime.frameIdle = min(runtime.frameIdle + 1, 1024)
-      #if runtime.frameIdle mod 8 == 0:
-      #  echo "sleep time: ", (runtime.frameIdle div 8), " idle: ", runtime.frameIdle
-      sleep(runtime.frameIdle div 8)
+      if (not runtime.state.isNil) and runtime.state[].cursorBlinkActive():
+        runtime.frameIdle = 0
+        sleep(16)
+      else:
+        runtime.frameIdle = min(runtime.frameIdle + 1, 1024)
+        #if runtime.frameIdle mod 8 == 0:
+        #  echo "sleep time: ", (runtime.frameIdle div 8), " idle: ", runtime.frameIdle
+        sleep(runtime.frameIdle div 8)
   result = runtime.appRunning
 
 proc shutdownGui*(runtime: GuiRuntime) =
@@ -1677,6 +1730,11 @@ proc initGuiRuntime*(
   result.hoverNewTab = false
   result.activeTab = -1
   result.nextTabId = 1
+  result.cursorBlinkStart = epochTime()
+  result.cursorBlinkRow = -1
+  result.cursorBlinkCol = -1
+  result.cursorBlinkModeIdx = -1
+  result.cursorVisible = true
   result.baseMainDir = guessMainDir(config.nvimArgs)
   trySetWindowIcon(result.window)
 

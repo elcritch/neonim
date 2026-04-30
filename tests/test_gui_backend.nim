@@ -1,4 +1,4 @@
-import std/[os, unicode, unittest, tables]
+import std/[options, os, unicode, unittest, tables]
 
 import figdraw/commons
 import figdraw/common/fonttypes
@@ -148,6 +148,7 @@ suite "gui backend renders":
     check keyToNvimInput(siwin.Key.b, ctrlDown = true, altDown = true) == "<A-C-b>"
     check runeToNvimInput(Rune('<')) == "<LT>"
     check runeToNvimInput(Rune('a')) == "a"
+
     check cmdShortcutAction(siwin.Key.c) == csaCopy
     check cmdShortcutAction(siwin.Key.v) == csaPaste
     check cmdShortcutAction(siwin.Key.x) == csaNone
@@ -193,6 +194,89 @@ suite "gui backend renders":
           if foundPanel:
             break
     check foundPanel
+
+  test "cursor renderer uses mode_info_set shape and highlight color":
+    let monoFont = testMonoFont()
+    let (cellW, cellH) = monoMetrics(monoFont)
+    let rows = 3
+    let cols = 6
+    let w = cellW * cols.float32
+    let h = cellH * rows.float32
+    var state = initLineGridState(rows, cols)
+    state.cursorRow = 1
+    state.cursorCol = 2
+    state.cursorStyleEnabled = true
+    state.cursorStyles =
+      @[
+        CursorStyle(
+          shape: csVertical,
+          cellPercentage: 25,
+          blinkwait: 0,
+          blinkon: 0,
+          blinkoff: 0,
+          attrId: 5,
+          attrIdLm: 0,
+          shortName: "i",
+          name: "insert",
+        )
+      ]
+    state.currentModeIdx = 0
+    let cursorBg = rgba(0x22'u8, 0x44'u8, 0x66'u8, 255).color
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+    hl.attrs[5] = HlAttr(fg: none(Color), bg: some(cursorBg), reverse: false)
+
+    let renders = makeRenderTree(w, h, monoFont, state, hl, cellW, cellH)
+
+    var foundCursor = false
+    if 1.ZLevel in renders.layers:
+      for node in renders.layers[1.ZLevel].nodes:
+        if node.kind == nkRectangle and node.fill.kind == flColor and
+            node.fill.color == rgba(cursorBg):
+          foundCursor =
+            abs(node.screenBox.x - (2 * cellW)) < 0.001'f32 and
+            abs(node.screenBox.y - (1 * 2.0'f32 * cellH)) < 0.001'f32 and
+            abs(node.screenBox.w - max(1.0'f32, cellW * 0.25'f32)) < 0.001'f32 and
+            abs(node.screenBox.h - (2 * cellH)) < 0.001'f32
+          if foundCursor:
+            break
+    check foundCursor
+
+  test "block cursor swaps cell colors and redraws cell text":
+    let monoFont = testMonoFont()
+    let (cellW, cellH) = monoMetrics(monoFont)
+    var state = initLineGridState(2, 4)
+    state.colors.bg = rgba(0x10'u8, 0x20'u8, 0x30'u8, 255).color
+    state.cursorRow = 0
+    state.cursorCol = 1
+    state.cursorStyleEnabled = true
+    state.cursorStyles = @[defaultCursorStyle()]
+    state.currentModeIdx = 0
+    state.cells[state.cellIndex(0, 1)].text = "X"
+    state.cells[state.cellIndex(0, 1)].hlId = 7
+    let cellFg = rgba(0xaa'u8, 0xbb'u8, 0xcc'u8, 255).color
+    let cellBg = rgba(0x33'u8, 0x44'u8, 0x55'u8, 255).color
+    var hl = HlState(attrs: initTable[int64, HlAttr]())
+    hl.attrs[7] = HlAttr(fg: some(cellFg), bg: some(cellBg), reverse: false)
+
+    let renders = makeRenderTree(
+      cellW * 4.0'f32, cellH * 2.0'f32, monoFont, state, hl, cellW, cellH
+    )
+
+    var foundCursorBg = false
+    var foundCursorText = false
+    if 1.ZLevel in renders.layers:
+      for node in renders.layers[1.ZLevel].nodes:
+        if node.kind == nkRectangle and node.fill.kind == flColor and
+            node.fill.color == rgba(cellFg):
+          foundCursorBg = true
+        if node.kind == nkText and node.fill.kind == flColor and
+            node.fill.color == rgba(cellBg):
+          for r in node.textLayout.runes:
+            if r == Rune('X'):
+              foundCursorText = true
+              break
+    check foundCursorBg
+    check foundCursorText
 
   test "panel highlight falls back to split-bounded width in single grid":
     let monoFont = testMonoFont()

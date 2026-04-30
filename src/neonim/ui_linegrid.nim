@@ -20,6 +20,22 @@ type
     fg*: Color
     bg*: Color
 
+  CursorShape* = enum
+    csBlock
+    csHorizontal
+    csVertical
+
+  CursorStyle* = object
+    shape*: CursorShape
+    cellPercentage*: int
+    blinkwait*: int
+    blinkon*: int
+    blinkoff*: int
+    attrId*: int64
+    attrIdLm*: int64
+    shortName*: string
+    name*: string
+
   LineGridState* = object
     rows*: int
     cols*: int
@@ -39,6 +55,10 @@ type
     wildmenuSelected*: int
     wildmenuItems*: seq[string]
     cursorGrid*: int64
+    cursorStyleEnabled*: bool
+    cursorStyles*: seq[CursorStyle]
+    currentMode*: string
+    currentModeIdx*: int
     winRects*: Table[int64, GridRect]
     panelHighlightRow*: int
     panelHighlightCol*: int
@@ -46,6 +66,7 @@ type
   HlAttr* = object
     fg*: Option[Color]
     bg*: Option[Color]
+    reverse*: bool
 
   HlState* = object
     attrs*: Table[int64, HlAttr]
@@ -55,6 +76,19 @@ proc rgb24ToColor(v: int64): Color =
   let g = uint8((v shr 8) and 0xff)
   let b = uint8(v and 0xff)
   rgba(r, g, b, 255).color
+
+proc defaultCursorStyle*(): CursorStyle =
+  CursorStyle(
+    shape: csBlock,
+    cellPercentage: 100,
+    blinkwait: 0,
+    blinkon: 0,
+    blinkoff: 0,
+    attrId: 0,
+    attrIdLm: 0,
+    shortName: "n",
+    name: "normal",
+  )
 
 proc initLineGridState*(rows, cols: int): LineGridState =
   result.rows = rows
@@ -76,10 +110,25 @@ proc initLineGridState*(rows, cols: int): LineGridState =
   result.wildmenuSelected = -1
   result.wildmenuItems = @[]
   result.cursorGrid = 0
+  result.cursorStyleEnabled = false
+  result.cursorStyles = @[]
+  result.currentMode = ""
+  result.currentModeIdx = 0
   result.winRects = initTable[int64, GridRect]()
   result.winRects[0] = GridRect(row: 0, col: 0, rows: rows, cols: cols)
   result.panelHighlightRow = -1
   result.panelHighlightCol = -1
+
+proc currentCursorStyle*(s: LineGridState): CursorStyle =
+  if s.currentModeIdx >= 0 and s.currentModeIdx < s.cursorStyles.len:
+    return s.cursorStyles[s.currentModeIdx]
+  defaultCursorStyle()
+
+proc cursorBlinkActive*(s: LineGridState): bool =
+  if not s.cursorStyleEnabled:
+    return false
+  let style = s.currentCursorStyle()
+  style.blinkon > 0 and style.blinkoff > 0
 
 proc cellIndex*(s: LineGridState, row, col: int): int =
   row * s.cols + col
@@ -173,6 +222,12 @@ proc unpackInt64(s: MsgStream): int64 =
     return i
   raise newException(NeovimError, "expected integer")
 
+proc unpackBool(s: MsgStream): bool =
+  if s.is_bool():
+    s.unpack(result)
+    return
+  raise newException(NeovimError, "expected bool")
+
 proc unpackStringOrBin(s: MsgStream): string =
   if s.is_string():
     let len = s.unpack_string()
@@ -192,7 +247,7 @@ proc handleHlAttrDefine(hl: var HlState, s: MsgStream) =
       s.skip_msg()
     return
   let id = unpackInt64(s)
-  var attr = HlAttr(fg: none(Color), bg: none(Color))
+  var attr = HlAttr(fg: none(Color), bg: none(Color), reverse: false)
   if s.is_map():
     let mlen = s.unpack_map()
     for _ in 0 ..< mlen:
@@ -202,6 +257,11 @@ proc handleHlAttrDefine(hl: var HlState, s: MsgStream) =
         attr.fg = some(rgb24ToColor(unpackInt64(s)))
       of "background":
         attr.bg = some(rgb24ToColor(unpackInt64(s)))
+      of "reverse":
+        if s.is_bool():
+          attr.reverse = unpackBool(s)
+        else:
+          s.skip_msg()
       else:
         s.skip_msg()
   else:
@@ -210,6 +270,80 @@ proc handleHlAttrDefine(hl: var HlState, s: MsgStream) =
   for _ in 2 ..< itemLen:
     s.skip_msg()
   hl.attrs[id] = attr
+
+proc unpackCursorShape(s: MsgStream): CursorShape =
+  let shape = unpackStringOrBin(s)
+  case shape
+  of "horizontal": csHorizontal
+  of "vertical": csVertical
+  else: csBlock
+
+proc normalizeCursorPercentage(style: var CursorStyle) =
+  if style.cellPercentage <= 0:
+    style.cellPercentage =
+      case style.shape
+      of csBlock: 100
+      of csHorizontal: 20
+      of csVertical: 25
+  style.cellPercentage = min(100, max(1, style.cellPercentage))
+
+proc unpackCursorStyle(s: MsgStream): CursorStyle =
+  result = defaultCursorStyle()
+  if not s.is_map():
+    s.skip_msg()
+    return
+  let mlen = s.unpack_map()
+  for _ in 0 ..< mlen:
+    let key = unpackStringOrBin(s)
+    case key
+    of "cursor_shape":
+      if s.is_string() or s.is_bin():
+        result.shape = unpackCursorShape(s)
+      else:
+        s.skip_msg()
+    of "cell_percentage":
+      if s.is_uint() or s.is_int():
+        result.cellPercentage = int(unpackInt64(s))
+      else:
+        s.skip_msg()
+    of "blinkwait":
+      if s.is_uint() or s.is_int():
+        result.blinkwait = int(unpackInt64(s))
+      else:
+        s.skip_msg()
+    of "blinkon":
+      if s.is_uint() or s.is_int():
+        result.blinkon = int(unpackInt64(s))
+      else:
+        s.skip_msg()
+    of "blinkoff":
+      if s.is_uint() or s.is_int():
+        result.blinkoff = int(unpackInt64(s))
+      else:
+        s.skip_msg()
+    of "attr_id", "hl_id":
+      if s.is_uint() or s.is_int():
+        result.attrId = unpackInt64(s)
+      else:
+        s.skip_msg()
+    of "attr_id_lm", "id_lm":
+      if s.is_uint() or s.is_int():
+        result.attrIdLm = unpackInt64(s)
+      else:
+        s.skip_msg()
+    of "short_name":
+      if s.is_string() or s.is_bin():
+        result.shortName = unpackStringOrBin(s)
+      else:
+        s.skip_msg()
+    of "name":
+      if s.is_string() or s.is_bin():
+        result.name = unpackStringOrBin(s)
+      else:
+        s.skip_msg()
+    else:
+      s.skip_msg()
+  result.normalizeCursorPercentage()
 
 proc applyGridLine(state: var LineGridState, hl: HlState, s: MsgStream) =
   let itemLen = s.unpack_array()
@@ -358,6 +492,47 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
           state.cursorRow = int(unpackInt64(s))
           state.cursorCol = int(unpackInt64(s))
           for _ in 3 ..< itemLen:
+            s.skip_msg()
+        else:
+          for _ in 0 ..< itemLen:
+            s.skip_msg()
+      state.needsRedraw = true
+    of "mode_info_set":
+      for _ in 1 ..< evLen:
+        let itemLen = s.unpack_array()
+        if itemLen >= 2:
+          if s.is_bool():
+            state.cursorStyleEnabled = unpackBool(s)
+          else:
+            s.skip_msg()
+          if s.is_array():
+            let modeCount = s.unpack_array()
+            var styles: seq[CursorStyle]
+            styles.setLen(modeCount)
+            for i in 0 ..< modeCount:
+              styles[i] = unpackCursorStyle(s)
+            state.cursorStyles = styles
+          else:
+            s.skip_msg()
+          for _ in 2 ..< itemLen:
+            s.skip_msg()
+        else:
+          for _ in 0 ..< itemLen:
+            s.skip_msg()
+      state.needsRedraw = true
+    of "mode_change":
+      for _ in 1 ..< evLen:
+        let itemLen = s.unpack_array()
+        if itemLen >= 2:
+          if s.is_string() or s.is_bin():
+            state.currentMode = unpackStringOrBin(s)
+          else:
+            s.skip_msg()
+          if s.is_uint() or s.is_int():
+            state.currentModeIdx = int(unpackInt64(s))
+          else:
+            s.skip_msg()
+          for _ in 2 ..< itemLen:
             s.skip_msg()
         else:
           for _ in 0 ..< itemLen:

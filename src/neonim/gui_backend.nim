@@ -361,6 +361,57 @@ proc resolveColors(
     let bg = attr.bg.get()
     if bg != state.colors.bg:
       result.bg = some(bg)
+  if attr.reverse:
+    let oldFg = result.fg
+    result.fg =
+      if result.bg.isSome:
+        result.bg.get()
+      else:
+        state.colors.bg
+    result.bg = some(oldFg)
+
+proc optionColor(o: Option[Color], fallback: Color): Color =
+  if o.isSome:
+    o.get()
+  else:
+    fallback
+
+proc resolveCursorColors(
+    state: LineGridState, hl: HlState, cell: Cell, style: CursorStyle
+): tuple[fill: Color, text: Color] =
+  let cellColors = resolveColors(state, hl, cell.hlId)
+  let cellBg = optionColor(cellColors.bg, state.colors.bg)
+  result.fill = cellColors.fg
+  result.text = cellBg
+
+  if style.attrId <= 0 or not hl.attrs.hasKey(style.attrId):
+    return
+
+  let attr = hl.attrs[style.attrId]
+  if attr.reverse:
+    result.fill = cellColors.fg
+    result.text = cellBg
+    return
+
+  if attr.bg.isSome:
+    result.fill = attr.bg.get()
+    result.text = optionColor(attr.fg, cellBg)
+  elif attr.fg.isSome:
+    result.fill = attr.fg.get()
+    result.text = cellBg
+
+proc cursorRect(style: CursorStyle, cx, cy, cellW, cellH: float32): Rect =
+  let fullH = 2 * cellH
+  let pct = max(1, min(100, style.cellPercentage)).float32 / 100.0'f32
+  case style.shape
+  of csBlock:
+    rect(cx, cy, cellW, fullH)
+  of csVertical:
+    let cw = max(1.0'f32, cellW * pct)
+    rect(cx, cy, cw, fullH)
+  of csHorizontal:
+    let ch = max(1.0'f32, fullH * pct)
+    rect(cx, cy + fullH - ch, cellW, ch)
 
 proc runeForCell(cell: Cell): Rune =
   for rr in cell.text.runes:
@@ -467,6 +518,7 @@ proc makeRenderTree*(
     state: LineGridState,
     hl: HlState,
     cellW, cellH: float32,
+    cursorVisible = true,
 ): Renders =
   var renders = Renders()
   let baseZ = 0.ZLevel
@@ -587,19 +639,49 @@ proc makeRenderTree*(
       ),
     )
 
-  if state.cursorRow >= 0 and state.cursorRow < state.rows and state.cursorCol >= 0 and
-      state.cursorCol < state.cols:
+  if cursorVisible and state.cursorRow >= 0 and state.cursorRow < state.rows and
+      state.cursorCol >= 0 and state.cursorCol < state.cols:
     let cx = state.cursorCol.float32 * cellW
     let cy = state.cursorRow.float32 * 2 * cellH
+    let style = state.currentCursorStyle()
+    let cell = state.renderedCell(state.cursorRow, state.cursorCol)
+    let cursorColors = resolveCursorColors(state, hl, cell, style)
+    let cursorFill =
+      if state.cursorStyleEnabled:
+        cursorColors.fill
+      else:
+        rgba(220, 220, 220, 80).color
     discard renders.addRoot(
       overlayZ,
       Fig(
         kind: nkRectangle,
         childCount: 0,
         zlevel: overlayZ,
-        screenBox: rect(cx, cy, cellW, 2 * cellH),
-        fill: rgba(220, 220, 220, 80).color,
+        screenBox:
+          if state.cursorStyleEnabled:
+            cursorRect(style, cx, cy, cellW, cellH)
+          else:
+            rect(cx, cy, cellW, 2 * cellH),
+        fill: cursorFill,
       ),
     )
+    if state.cursorStyleEnabled and style.shape == csBlock:
+      let textY = state.cursorRow.float32 * cellH
+      let layout = placeGlyphs(
+        fs(monoFont, cursorColors.text),
+        @[(runeForCell(cell), vec2(0'f32, textY))],
+        origin = GlyphTopLeft,
+      )
+      discard renders.addRoot(
+        overlayZ,
+        Fig(
+          kind: nkText,
+          childCount: 0,
+          zlevel: overlayZ,
+          screenBox: rect(cx, textY, cellW, cellH),
+          fill: cursorColors.text,
+          textLayout: layout,
+        ),
+      )
 
   result = renders
