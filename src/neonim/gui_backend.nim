@@ -400,6 +400,16 @@ proc resolveCursorColors(
     result.fill = attr.fg.get()
     result.text = cellBg
 
+proc resolveCellColors*(
+    state: LineGridState, hl: HlState, hlId: int64
+): tuple[fg: Color, bg: Option[Color]] =
+  resolveColors(state, hl, hlId)
+
+proc resolveCursorCellColors*(
+    state: LineGridState, hl: HlState, cell: Cell, style: CursorStyle
+): tuple[fill: Color, text: Color] =
+  resolveCursorColors(state, hl, cell, style)
+
 proc cursorRect(style: CursorStyle, cx, cy, cellW, cellH: float32): Rect =
   let fullH = 2 * cellH
   let pct = max(1, min(100, style.cellPercentage)).float32 / 100.0'f32
@@ -461,6 +471,19 @@ proc fallbackPaneCols(
   if right <= left:
     return (0, state.cols)
   (left, right)
+
+proc panelHighlightColumns*(
+    state: LineGridState
+): tuple[startCol, endColExclusive: int] =
+  result = (0, max(1, state.cols))
+  if state.panelHighlightRow < 0 or state.panelHighlightRow >= state.rows:
+    return
+  if state.cursorGrid != 0 and state.winRects.hasKey(state.cursorGrid):
+    let winRect = state.winRects[state.cursorGrid]
+    if state.panelHighlightRow >= winRect.row and
+        state.panelHighlightRow < winRect.row + winRect.rows:
+      return (winRect.col, winRect.col + winRect.cols)
+  result = state.fallbackPaneCols(state.panelHighlightRow, state.panelHighlightCol)
 
 proc addRowRun(
     renders: var Renders,

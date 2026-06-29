@@ -1,6 +1,6 @@
 ## Neonim - Neovim GUI backend in Nim.
 ##
-import std/[streams, os, osproc, strutils, times, unicode, tables]
+import std/[streams, os, osproc, strutils, times, unicode, tables, options]
 import chronicles
 
 import libbacktrace
@@ -8,10 +8,12 @@ import libbacktrace
 import vmath
 import msgpack4nim
 import pkg/pixie
+import merenda/nimkit as nk except Rect, Size, Point, Color
+import sigils/core
 import siwin/[clipboards, colorutils]
 import figdraw/windowing/siwinshim as siwin
 
-import figdraw/[commons, fignodes, figrender]
+import figdraw/commons
 import figdraw/common/fonttypes
 import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend]
 
@@ -21,24 +23,6 @@ const
   NvimDirChangedMethod = "neonim_dir_changed"
   DefaultFontSize = 16.0'f32
   TopBarHeight = 35.0'f32
-  TopBarTabGap = 6.0'f32
-  TopBarTabMinWidth = 180.0'f32
-  TopBarTabMaxWidth = 360.0'f32
-  TopBarTabHeight = 29.0'f32
-  TopBarTabY = 4.0'f32
-  TopBarLeadingPad = 20.0'f32
-  TopBarNewTabWidth = 29.0'f32
-  TopBarTextInset = 12.0'f32
-  TopBarTextLift = 2.5'f32
-  TopBarInactiveBottomGap = 2.0'f32
-  TopBarTabCloseHitWidth = 16.0'f32
-  TopBarTabCloseGap = 6.0'f32
-  TopBarTabCloseGlyphWidth = 10.0'f32
-  TopBarTabCloseLift = 1.0'f32
-  TopBarMacTrafficButtonSize = 12.0'f32
-  TopBarMacTrafficButtonGap = 8.0'f32
-  TopBarAppLabelSideSpaceCells = 3.0'f32
-  TopBarAppLabel = "Neonim"
 
 type
   LineGridStateRef = ref LineGridState
@@ -52,25 +36,27 @@ type
     state: LineGridStateRef
     hl: HlStateRef
 
-  GuiRuntime* = ref object
+  NeonimEditor = ref object of nk.MonoTextView
+    runtime: GuiRuntime
+
+  GuiRuntime* = ref object of nk.Responder
     config*: GuiConfig
     testCfg*: GuiTestConfig
     appRunning*: bool
     testStart*: float
     testSent*: bool
     testPassed*: bool
-    figNodesDumpPath*: string
     window*: siwin.Window
-    renderer*: FigRenderer[siwin.SiwinRenderBackend]
-    windowStarted: bool
-    mouseDown: MouseButtonView
+    app*: nk.Application
+    kitWindow*: nk.Window
+    rootView*: nk.View
+    layoutView*: nk.StackView
+    documentTabs*: nk.DocumentTabs
+    editor*: NeonimEditor
     modifiers: ModifierView
-    lastScroll: Vec2
     tabs: seq[NvimProcessTab]
     activeTab: int
     nextTabId: int
-    hoverTab: int
-    hoverNewTab: bool
     topBarHeight: float32
     baseMainDir: string
     client*: NeovimClient
@@ -80,14 +66,8 @@ type
     scrollSpeedMultiplier*: float32
     scrollDirectionInverted*: bool
     iconRetriedAfterFirstStep: bool
-    tabColorEnabled: bool
-    tabColorR: int
-    tabColorG: int
-    tabColorB: int
-    tabShadeEnabled: bool
-    tabShadeR: int
-    tabShadeG: int
-    tabShadeB: int
+    suppressDocumentTabCallbacks: bool
+    tabsNeedSync: bool
     state*: LineGridStateRef
     hl*: HlStateRef
     frameIdle*: int
@@ -103,12 +83,18 @@ proc computeGridSize(size: Vec2, cellW, cellH: float32): tuple[rows, cols: int] 
   (rows, cols)
 
 proc contentLogicalSize(runtime: GuiRuntime): Vec2 =
+  if not runtime.editor.isNil:
+    let bounds = runtime.editor.bounds()
+    if bounds.size.width > 0.0'f32 and bounds.size.height > 0.0'f32:
+      return vec2(bounds.size.width, bounds.size.height)
+  if not runtime.kitWindow.isNil:
+    let size = runtime.kitWindow.frame().size
+    if size.width > 0.0'f32 and size.height > 0.0'f32:
+      return vec2(size.width, max(1.0'f32, size.height - runtime.topBarHeight))
+  if runtime.window.isNil:
+    return vec2(1000.0'f32, max(1.0'f32, 700.0'f32 - runtime.topBarHeight))
   let sz = runtime.window.logicalSize()
   vec2(sz.x, max(1.0'f32, sz.y - runtime.topBarHeight))
-
-proc runeCount(text: string): int =
-  for _ in text.runes:
-    inc result
 
 proc homeShortPath(path: string): string =
   var normalized = normalizedPath(path)
@@ -167,17 +153,6 @@ proc guessMainDir(args: seq[string]): string =
 proc tabLabelForDir(mainDir: string): string =
   homeShortPath(mainDir)
 
-proc appLabelWidth(runtime: GuiRuntime): float32 =
-  let advance = max(1.0'f32, runtime.monoFont.size * 0.55'f32)
-  runeCount(TopBarAppLabel).float32 * advance
-
-proc macButtonsRightX(): float32 =
-  TopBarLeadingPad + TopBarMacTrafficButtonSize * 3.0'f32 +
-    TopBarMacTrafficButtonGap * 2.0'f32
-
-proc appLabelX(runtime: GuiRuntime): float32 =
-  macButtonsRightX() + runtime.cellW * (TopBarAppLabelSideSpaceCells * 0.5'f32)
-
 proc rpcPackUiAttachParams(
     cols, rows: int, opts: openArray[(string, bool)]
 ): RpcParamsBuffer =
@@ -192,80 +167,41 @@ proc rpcPackUiAttachParams(
   s.setPosition(s.data.len)
   RpcParamsBuffer(buf: s)
 
-proc dumpFigNodes*(
-    renders: Renders,
-    path: string,
-    logicalSize: Vec2,
-    physicalSize: Vec2,
-    uiScale: float32,
-    contentScale: float32,
-) =
-  if path.len == 0:
-    return
-  var dump = newStringOfCap(4096)
-  dump.add("frame logical ")
-  dump.add($logicalSize.x)
-  dump.add(" ")
-  dump.add($logicalSize.y)
-  dump.add(" physical ")
-  dump.add($physicalSize.x)
-  dump.add(" ")
-  dump.add($physicalSize.y)
-  dump.add(" ui_scale ")
-  dump.add($uiScale)
-  dump.add(" content_scale ")
-  dump.add($contentScale)
-  dump.add("\n")
-  for layer, list in renders.layers:
-    dump.add("layer ")
-    dump.add($int(layer))
-    dump.add(" nodes=")
-    dump.add($list.nodes.len)
-    dump.add("\n")
-    for idx, node in list.nodes:
-      dump.add("  idx=")
-      dump.add($idx)
-      dump.add(" kind=")
-      dump.add($node.kind)
-      dump.add(" parent=")
-      dump.add($node.parent.int)
-      dump.add(" children=")
-      dump.add($node.childCount)
-      dump.add(" box=(")
-      dump.add($node.screenBox.x)
-      dump.add(", ")
-      dump.add($node.screenBox.y)
-      dump.add(", ")
-      dump.add($node.screenBox.w)
-      dump.add(", ")
-      dump.add($node.screenBox.h)
-      dump.add(")")
-      if node.kind == nkText:
-        var text = ""
-        var count = 0
-        for r in node.textLayout.runes:
-          if count >= 200:
-            text.add("...")
-            break
-          let code = int(r)
-          if code >= 32 and code < 127:
-            text.add(char(code))
-          else:
-            text.add("\\u")
-            text.add(code.toHex(4))
-          inc count
-        dump.add("\n         text=\"")
-        dump.add(text)
-        dump.add("\"")
-      dump.add("\n")
-  writeFile(path, dump)
-
 proc activeTabRef(runtime: GuiRuntime): NvimProcessTab =
   if runtime.tabs.len == 0:
     return nil
   if runtime.activeTab < 0 or runtime.activeTab >= runtime.tabs.len:
     runtime.activeTab = min(max(0, runtime.activeTab), runtime.tabs.len - 1)
   runtime.tabs[runtime.activeTab]
+
+proc tabIdentifier(tab: NvimProcessTab): string =
+  if tab.isNil:
+    ""
+  else:
+    $tab.id
+
+proc tabIndexForIdentifier(runtime: GuiRuntime, identifier: string): int =
+  for idx, tab in runtime.tabs:
+    if tab.tabIdentifier() == identifier:
+      return idx
+  -1
+
+proc syncDocumentTabs(runtime: GuiRuntime) =
+  if runtime.isNil or runtime.documentTabs.isNil:
+    return
+
+  runtime.suppressDocumentTabCallbacks = true
+  runtime.documentTabs.removeAllDocumentTabs()
+  for tab in runtime.tabs:
+    if tab.isNil:
+      continue
+    let item = nk.newDocumentTabItem(
+      title = tab.label, identifier = tab.tabIdentifier(), closeable = true
+    )
+    discard runtime.documentTabs.addDocumentTabItem(item)
+  if runtime.activeTab >= 0 and runtime.activeTab < runtime.documentTabs.len():
+    discard runtime.documentTabs.selectDocumentTabAtIndex(runtime.activeTab)
+  runtime.suppressDocumentTabCallbacks = false
 
 proc syncActiveAliases(runtime: GuiRuntime) =
   let tab = runtime.activeTabRef()
@@ -290,6 +226,10 @@ proc selectTab(runtime: GuiRuntime, idx: int): bool =
   runtime.syncActiveAliases()
   if not runtime.state.isNil:
     runtime.state.needsRedraw = true
+  if not runtime.documentTabs.isNil and runtime.documentTabs.selectedIndex() != idx:
+    runtime.suppressDocumentTabCallbacks = true
+    discard runtime.documentTabs.selectDocumentTabAtIndex(idx)
+    runtime.suppressDocumentTabCallbacks = false
   result = true
 
 proc normalizedExistingDir(path: string, fallbackDir: string): string =
@@ -380,6 +320,7 @@ proc createProcessTab(
           return
         tabRef.mainDir = nextDir
         tabRef.label = tabLabelForDir(nextDir)
+        runtime.tabsNeedSync = true
         if not tabRef.state.isNil:
           tabRef.state.needsRedraw = true
       except CatchableError as err:
@@ -407,6 +348,7 @@ proc addProcessTab(
   try:
     runtime.tabs.add(runtime.createProcessTab(mainDir, nvimArgs))
     discard runtime.selectTab(runtime.tabs.len - 1)
+    runtime.syncDocumentTabs()
     result = true
   except CatchableError as err:
     warn "failed to create nvim tab", mainDir = mainDir, error = err.msg
@@ -423,11 +365,11 @@ proc closeTab(runtime: GuiRuntime, idx: int): bool =
 
   if runtime.tabs.len == 0:
     runtime.activeTab = -1
-    runtime.hoverTab = -1
     runtime.client = nil
     runtime.state = nil
     runtime.hl = nil
     runtime.appRunning = false
+    runtime.syncDocumentTabs()
     return true
 
   if wasActive:
@@ -439,14 +381,14 @@ proc closeTab(runtime: GuiRuntime, idx: int): bool =
   elif idx < runtime.activeTab:
     dec runtime.activeTab
 
-  runtime.hoverTab = -1
-  runtime.hoverNewTab = false
   runtime.syncActiveAliases()
   if not runtime.state.isNil:
     runtime.state.needsRedraw = true
+  runtime.syncDocumentTabs()
   result = true
 
 proc removeDeadTabs(runtime: GuiRuntime) =
+  var changed = false
   var i = 0
   while i < runtime.tabs.len:
     let tab = runtime.tabs[i]
@@ -454,655 +396,177 @@ proc removeDeadTabs(runtime: GuiRuntime) =
       if not tab.isNil and not tab.client.isNil:
         tab.client.stop()
       runtime.tabs.delete(i)
+      changed = true
       continue
     inc i
 
   if runtime.tabs.len == 0:
     runtime.activeTab = -1
-    runtime.hoverTab = -1
     runtime.client = nil
     runtime.state = nil
     runtime.hl = nil
     runtime.appRunning = false
+    if changed:
+      runtime.syncDocumentTabs()
     return
 
   if runtime.activeTab < 0 or runtime.activeTab >= runtime.tabs.len:
     runtime.activeTab = min(max(0, runtime.activeTab), runtime.tabs.len - 1)
-  if runtime.hoverTab >= runtime.tabs.len:
-    runtime.hoverTab = -1
   runtime.syncActiveAliases()
+  if changed:
+    runtime.syncDocumentTabs()
 
-proc tabStripStartX(runtime: GuiRuntime): float32 =
-  when defined(macosx):
-    macButtonsRightX() + runtime.cellW * TopBarAppLabelSideSpaceCells +
-      runtime.appLabelWidth() + TopBarTabGap
-  else:
-    TopBarLeadingPad
+protocol NeonimDocumentTabsDelegate of nk.DocumentTabsDelegate:
+  method didSelectDocumentTab(
+      runtime: GuiRuntime, tabs: nk.DocumentTabs, item: nk.DocumentTabItem
+  ) =
+    discard tabs
+    if runtime.suppressDocumentTabCallbacks:
+      return
+    let idx = runtime.tabIndexForIdentifier(item.identifier())
+    if idx >= 0:
+      discard runtime.selectTab(idx)
 
-proc tabWidthForLabel(runtime: GuiRuntime, label: string): float32 =
-  let advance = max(1.0'f32, runtime.monoFont.size * 0.55'f32)
-  let textW = runeCount(label).float32 * advance
-  let horizontalTextPadding =
-    TopBarTextInset * 2 + TopBarTabCloseGap + TopBarTabCloseHitWidth
-  min(TopBarTabMaxWidth, max(TopBarTabMinWidth, textW + horizontalTextPadding))
+  method shouldCloseDocumentTab(
+      runtime: GuiRuntime, tabs: nk.DocumentTabs, item: nk.DocumentTabItem, index: int
+  ): bool =
+    discard tabs
+    discard item
+    not runtime.suppressDocumentTabCallbacks and index >= 0 and index < runtime.tabs.len
 
-proc tabRects(
-    runtime: GuiRuntime, logicalWidth: float32, newTabRect: var Rect
-): seq[Rect] =
-  let tabGap = TopBarTabGap
-  let tabY = TopBarTabY
-  let tabH = TopBarTabHeight
-  let newTabW = TopBarNewTabWidth
-  var x = runtime.tabStripStartX()
-  result = @[]
-  for tab in runtime.tabs:
-    let w = runtime.tabWidthForLabel(tab.label)
-    if x + w > logicalWidth - newTabW - tabGap:
-      break
-    result.add(rect(x, tabY, w, tabH))
-    x += w + tabGap
-  newTabRect = rect(x, TopBarTabY + 1, newTabW, newTabW)
+  method didCloseDocumentTab(
+      runtime: GuiRuntime, tabs: nk.DocumentTabs, item: nk.DocumentTabItem, index: int
+  ) =
+    discard tabs
+    discard item
+    if runtime.suppressDocumentTabCallbacks:
+      return
+    discard runtime.closeTab(index)
 
-proc pointInRect(p: Vec2, r: Rect): bool =
-  p.x >= r.x and p.x < (r.x + r.w) and p.y >= r.y and p.y < (r.y + r.h)
+  method didMoveDocumentTab(
+      runtime: GuiRuntime,
+      tabs: nk.DocumentTabs,
+      item: nk.DocumentTabItem,
+      fromIndex: int,
+      toIndex: int,
+  ) =
+    discard tabs
+    discard item
+    if runtime.suppressDocumentTabCallbacks:
+      return
+    if fromIndex < 0 or fromIndex >= runtime.tabs.len:
+      return
+    let bounded = max(0, min(toIndex, runtime.tabs.high))
+    if bounded == fromIndex:
+      return
+    let selected = runtime.activeTabRef()
+    let moving = runtime.tabs[fromIndex]
+    runtime.tabs.delete(fromIndex)
+    runtime.tabs.insert(moving, bounded)
+    runtime.activeTab = -1
+    for idx, tab in runtime.tabs:
+      if tab == selected:
+        runtime.activeTab = idx
+        break
+    runtime.syncActiveAliases()
+    runtime.syncDocumentTabs()
 
-proc tabCloseRect(box: Rect): Rect =
-  let h = max(12.0'f32, box.h - 8.0'f32)
-  rect(
-    box.x + box.w - TopBarTextInset - TopBarTabCloseHitWidth,
-    box.y + max(0.0'f32, (box.h - h) * 0.5'f32),
-    TopBarTabCloseHitWidth,
-    h,
+proc monoCursorStyle(style: CursorStyle): nk.MonoTextCursorStyle =
+  case style.shape
+  of csVertical: nk.mtcVertical
+  of csHorizontal: nk.mtcUnderline
+  of csBlock: nk.mtcBlock
+
+proc cursorInGrid(state: LineGridState): bool =
+  state.cursorRow >= 0 and state.cursorRow < state.rows and state.cursorCol >= 0 and
+    state.cursorCol < state.cols
+
+proc blockCursorSwapsCell(state: LineGridState, cursorVisible: bool): bool =
+  if not cursorVisible or not state.cursorInGrid():
+    return false
+  state.cursorStyleEnabled and state.currentCursorStyle().shape == csBlock
+
+proc monoCellFor(
+    state: LineGridState,
+    hl: HlState,
+    row, col: int,
+    highlightStart, highlightStop: int,
+    blockCursorActive: bool,
+): nk.MonoTextCell =
+  let cell = state.renderedCell(row, col)
+  var colors = resolveCellColors(state, hl, cell.hlId)
+  var bg = colors.bg
+
+  if row == state.panelHighlightRow and col >= highlightStart and col < highlightStop:
+    bg = some(PanelHighlightFill)
+
+  if blockCursorActive and row == state.cursorRow and col == state.cursorCol:
+    let cursorColors =
+      resolveCursorCellColors(state, hl, cell, state.currentCursorStyle())
+    return nk.initMonoTextCell(
+      cell.text,
+      foregroundColor = cursorColors.text,
+      backgroundColor = cursorColors.fill,
+      hasForegroundColor = true,
+      hasBackgroundColor = true,
+    )
+
+  nk.initMonoTextCell(
+    cell.text,
+    foregroundColor = colors.fg,
+    backgroundColor =
+      if bg.isSome:
+        bg.get()
+      else:
+        state.colors.bg,
+    hasForegroundColor = true,
+    hasBackgroundColor = bg.isSome,
   )
 
-proc topBarHit(
-    runtime: GuiRuntime, mousePos: Vec2
-): tuple[tabIdx: int, newTab: bool, closeTabIdx: int] =
-  let logicalWidth = runtime.window.logicalSize().x
-  var newTabRect = rect(0, 0, 0, 0)
-  let rects = runtime.tabRects(logicalWidth, newTabRect)
-  for idx, r in rects:
-    if pointInRect(mousePos, tabCloseRect(r)):
-      return (-1, false, idx)
-    if pointInRect(mousePos, r):
-      return (idx, false, -1)
-  if pointInRect(mousePos, newTabRect):
-    return (-1, true, -1)
-  (-1, false, -1)
-
-proc trimFrontWithPrefix(text: string, maxRunes: int, prefix = "…"): string =
-  if maxRunes <= 0 or text.len == 0:
-    return ""
-
-  var textRunes: seq[Rune] = @[]
-  for r in text.runes:
-    textRunes.add(r)
-  if textRunes.len <= maxRunes:
-    return text
-
-  var prefixRunes: seq[Rune] = @[]
-  for r in prefix.runes:
-    prefixRunes.add(r)
-  if prefixRunes.len == 0:
-    let startIdx = max(0, textRunes.len - maxRunes)
-    for i in startIdx ..< textRunes.len:
-      result.add(textRunes[i])
+proc syncEditorView(runtime: GuiRuntime) =
+  if runtime.isNil or runtime.editor.isNil or runtime.state.isNil or runtime.hl.isNil:
     return
 
-  if maxRunes <= prefixRunes.len:
-    let startIdx = prefixRunes.len - maxRunes
-    for i in startIdx ..< prefixRunes.len:
-      result.add(prefixRunes[i])
-    return
+  let state = runtime.state[]
+  let hl = runtime.hl[]
+  runtime.editor.backgroundColor = state.colors.bg
+  runtime.editor.textColor = state.colors.fg
+  runtime.editor.setGridSize(state.rows, state.cols)
 
-  for r in prefixRunes:
-    result.add(r)
-  let tailLen = maxRunes - prefixRunes.len
-  let tailStart = textRunes.len - tailLen
-  for i in tailStart ..< textRunes.len:
-    result.add(textRunes[i])
-
-proc addSingleLineText(
-    renders: var Renders,
-    zlevel: ZLevel,
-    text: string,
-    font: FigFont,
-    color: Color,
-    x, y, maxWidth: float32,
-) =
-  if text.len == 0 or maxWidth <= 1:
-    return
-  let advance = max(1.0'f32, font.size * 0.55'f32)
-  let maxRunes = max(1, int(maxWidth / advance))
-  let clippedText = trimFrontWithPrefix(text, maxRunes)
-  var glyphs: seq[(Rune, Vec2)] = @[]
-  var count = 0
-  for r in clippedText.runes:
-    if count >= maxRunes:
-      break
-    # Glyph positions are relative to this text node's origin.
-    glyphs.add((r, vec2(count.float32 * advance, 0)))
-    inc count
-  if glyphs.len == 0:
-    return
-  let layout = placeGlyphs(fs(font, color), glyphs, origin = GlyphTopLeft)
-  discard renders.addRoot(
-    zlevel,
-    Fig(
-      kind: nkText,
-      childCount: 0,
-      zlevel: zlevel,
-      screenBox: rect(x, y, maxWidth, font.size),
-      fill: color,
-      textLayout: layout,
-    ),
-  )
-
-proc clampByte(v: int): uint8 =
-  uint8(max(0, min(255, v)))
-
-proc mixByte(base, tint: int, amount: float32): uint8 =
-  let a = min(1.0'f32, max(0.0'f32, amount))
-  clampByte(int(round(base.float32 * (1.0'f32 - a) + tint.float32 * a)))
-
-proc tabToneRgba(runtime: GuiRuntime, r, g, b, a: int, tintAmount: float32): auto =
-  if runtime.tabColorEnabled:
-    rgba(
-      mixByte(r, runtime.tabColorR, tintAmount),
-      mixByte(g, runtime.tabColorG, tintAmount),
-      mixByte(b, runtime.tabColorB, tintAmount),
-      clampByte(a),
-    )
-  else:
-    rgba(clampByte(r), clampByte(g), clampByte(b), clampByte(a))
-
-proc tabShadeRgba(runtime: GuiRuntime, r, g, b, a: int, shadeAmount: float32): auto =
-  if runtime.tabShadeEnabled:
-    rgba(
-      mixByte(r, runtime.tabShadeR, shadeAmount),
-      mixByte(g, runtime.tabShadeG, shadeAmount),
-      mixByte(b, runtime.tabShadeB, shadeAmount),
-      clampByte(a),
-    )
-  else:
-    rgba(clampByte(r), clampByte(g), clampByte(b), clampByte(a))
-
-proc offsetRendersY(renders: var Renders, yOffset: float32) =
-  for _, list in renders.layers.mpairs:
-    for i in 0 ..< list.nodes.len:
-      list.nodes[i].screenBox.y += yOffset
-
-proc renderTopBar(runtime: GuiRuntime, renders: var Renders, logicalSize: Vec2) =
-  let textInset = TopBarTextInset
-  let tabTopStrokeInset = 4.0'f32
-  let buttonTopStrokeInset = 3.0'f32
-  let activeBlendColor = runtime.tabToneRgba(227, 236, 248, 184, 0.58'f32).color
-  let separatorH = 3.0'f32
-  let z = 2.ZLevel
-  let barH = runtime.topBarHeight
-  let contentTopY = barH - separatorH + 1.0'f32
-
-  # Flat titlebar background to match native macOS chrome tone.
-  discard renders.addRoot(
-    z,
-    Fig(
-      kind: nkRectangle,
-      childCount: 0,
-      zlevel: z,
-      screenBox: rect(0, 0, logicalSize.x, barH),
-      fill: rgba(62, 65, 72, 255).color,
-    ),
-  )
-  let tabBarY = TopBarTabY + TopBarTabHeight - 1
-  let tabBarH = max(1.0'f32, barH - tabBarY - 1)
-  discard renders.addRoot(
-    z,
-    Fig(
-      kind: nkRectangle,
-      childCount: 0,
-      zlevel: z,
-      screenBox: rect(0, tabBarY, logicalSize.x, tabBarH),
-      fill: rgba(50, 54, 63, 255).color,
-    ),
-  )
-  discard renders.addRoot(
-    z,
-    Fig(
-      kind: nkRectangle,
-      childCount: 0,
-      zlevel: z,
-      screenBox: rect(0, tabBarY, logicalSize.x, 1),
-      fill: rgba(118, 126, 140, 44).color,
-    ),
-  )
-  discard renders.addRoot(
-    z,
-    Fig(
-      kind: nkRectangle,
-      childCount: 0,
-      zlevel: z,
-      screenBox: rect(0, barH - 1, logicalSize.x, 1),
-      fill: rgba(8, 12, 18, 0).color,
-    ),
-  )
-
-  when not defined(macosx):
-    let buttonSize = TopBarMacTrafficButtonSize
-    let buttonGap = TopBarMacTrafficButtonGap
-    let y = (runtime.topBarHeight - buttonSize) / 2
-    for i in 0 .. 2:
-      let x = TopBarLeadingPad + i.float32 * (buttonSize + buttonGap)
-      let fill =
-        if i == 0:
-          rgba(214, 88, 88, 255).color
-        elif i == 1:
-          rgba(218, 177, 69, 255).color
-        else:
-          rgba(98, 188, 118, 255).color
-      discard renders.addRoot(
-        z,
-        Fig(
-          kind: nkRectangle,
-          childCount: 0,
-          zlevel: z,
-          screenBox: rect(x, y, buttonSize, buttonSize),
-          fill: fill,
-        ),
-      )
-  else:
-    let appLabelY =
-      TopBarTabY + max(0.0'f32, (TopBarTabHeight - runtime.monoFont.size) * 0.5'f32) -
-      TopBarTextLift
-    renders.addSingleLineText(
-      z,
-      TopBarAppLabel,
-      runtime.monoFont,
-      rgba(231, 238, 248, 248).color,
-      runtime.appLabelX(),
-      appLabelY,
-      runtime.appLabelWidth(),
-    )
-
-  var newTabRect = rect(0, 0, 0, 0)
-  var activeTabBox = rect(0, 0, 0, 0)
-  var hasActiveTab = false
-  let rects = runtime.tabRects(logicalSize.x, newTabRect)
-  for idx, box in rects:
-    let tab = runtime.tabs[idx]
-    let isActive = idx == runtime.activeTab
-    let isHover = idx == runtime.hoverTab
-    let visualBox =
-      if isActive:
-        box
-      else:
-        rect(box.x, box.y, box.w, max(1.0'f32, box.h - TopBarInactiveBottomGap))
-    if isActive:
-      activeTabBox = box
-      hasActiveTab = true
-    let tabTextY =
-      visualBox.y + max(0.0'f32, (visualBox.h - runtime.monoFont.size) * 0.5'f32) -
-      TopBarTextLift
-    let closeBox = tabCloseRect(visualBox)
-    let tabFill =
-      if isActive:
-        linear(
-          runtime.tabShadeRgba(255, 255, 255, 194, 0.90'f32),
-          runtime.tabShadeRgba(246, 250, 255, 182, 0.82'f32),
-          runtime.tabToneRgba(227, 236, 248, 184, 0.58'f32),
-          axis = fgaY,
-          midPos = 112'u8,
-        )
-      elif isHover:
-        linear(
-          runtime.tabShadeRgba(243, 249, 255, 178, 0.78'f32),
-          runtime.tabToneRgba(220, 231, 246, 152, 0.45'f32),
-          runtime.tabToneRgba(193, 207, 227, 136, 0.52'f32),
-          axis = fgaY,
-          midPos = 112'u8,
-        )
-      else:
-        linear(
-          runtime.tabShadeRgba(228, 238, 252, 136, 0.70'f32),
-          runtime.tabToneRgba(202, 215, 234, 116, 0.54'f32),
-          runtime.tabToneRgba(178, 194, 218, 100, 0.62'f32),
-          axis = fgaY,
-          midPos = 112'u8,
-        )
-    let tabStroke =
-      if isActive:
-        runtime.tabShadeRgba(255, 255, 255, 52, 0.76'f32).color
-      elif isHover:
-        runtime.tabShadeRgba(244, 249, 255, 84, 0.68'f32).color
-      else:
-        runtime.tabShadeRgba(236, 244, 255, 68, 0.62'f32).color
-    let tabTextColor =
-      if isActive:
-        rgba(34, 43, 54, 255).color
-      else:
-        rgba(231, 238, 248, 248).color
-    let tabShadows =
-      if isActive:
-        [
-          RenderShadow(
-            style: DropShadow,
-            blur: 9,
-            spread: 0,
-            x: 0,
-            y: 2,
-            fill: rgba(0, 0, 0, 26).color,
-          ),
-          RenderShadow(
-            style: InnerShadow,
-            blur: 8,
-            spread: 0,
-            x: 0,
-            y: -3,
-            fill: runtime.tabShadeRgba(255, 255, 255, 36, 0.90'f32).color,
-          ),
-          RenderShadow(
-            style: InnerShadow,
-            blur: 10,
-            spread: 0,
-            x: 0,
-            y: 3,
-            fill: rgba(12, 17, 24, 28).color,
-          ),
-          RenderShadow(),
-        ]
-      elif isHover:
-        [
-          RenderShadow(
-            style: DropShadow,
-            blur: 8,
-            spread: 0,
-            x: 0,
-            y: 2,
-            fill: rgba(0, 0, 0, 22).color,
-          ),
-          RenderShadow(
-            style: InnerShadow,
-            blur: 7,
-            spread: 0,
-            x: 0,
-            y: -2,
-            fill: runtime.tabShadeRgba(255, 255, 255, 92, 0.82'f32).color,
-          ),
-          RenderShadow(
-            style: InnerShadow,
-            blur: 8,
-            spread: 0,
-            x: 0,
-            y: 2,
-            fill: rgba(12, 17, 24, 24).color,
-          ),
-          RenderShadow(),
-        ]
-      else:
-        [
-          RenderShadow(
-            style: DropShadow,
-            blur: 7,
-            spread: 0,
-            x: 0,
-            y: 2,
-            fill: rgba(0, 0, 0, 18).color,
-          ),
-          RenderShadow(
-            style: InnerShadow,
-            blur: 6,
-            spread: 0,
-            x: 0,
-            y: -2,
-            fill: runtime.tabShadeRgba(255, 255, 255, 72, 0.74'f32).color,
-          ),
-          RenderShadow(
-            style: InnerShadow,
-            blur: 8,
-            spread: 0,
-            x: 0,
-            y: 2,
-            fill: rgba(12, 17, 24, 18).color,
-          ),
-          RenderShadow(),
-        ]
-
-    discard renders.addRoot(
-      z,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: z,
-        screenBox: visualBox,
-        fill: tabFill,
-        corners: [8, 8, 0, 0],
-        shadows: tabShadows,
-      ),
-    )
-    discard renders.addRoot(
-      z,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: z,
-        screenBox: rect(
-          visualBox.x + tabTopStrokeInset,
-          visualBox.y,
-          max(1, visualBox.w - tabTopStrokeInset * 2),
-          1,
-        ),
-        fill: tabStroke,
-      ),
-    )
-    if isActive:
-      let mergeTop = box.y + box.h
-      let mergeH = contentTopY - mergeTop
-      if mergeH > 0.0'f32:
-        discard renders.addRoot(
-          z,
-          Fig(
-            kind: nkRectangle,
-            childCount: 0,
-            zlevel: z,
-            screenBox: rect(box.x, mergeTop, box.w, mergeH),
-            fill: activeBlendColor,
-          ),
-        )
+  let highlight =
+    if state.panelHighlightRow >= 0:
+      state.panelHighlightColumns()
     else:
-      discard renders.addRoot(
-        z,
-        Fig(
-          kind: nkRectangle,
-          childCount: 0,
-          zlevel: z,
-          screenBox: rect(visualBox.x, visualBox.y + visualBox.h - 1, visualBox.w, 1),
-          fill: rgba(12, 17, 24, 34).color,
-        ),
+      (startCol: 0, endColExclusive: 0)
+  let blockCursorActive = state.blockCursorSwapsCell(runtime.cursorVisible)
+  for row in 0 ..< state.rows:
+    var rowCells = newSeq[nk.MonoTextCell](state.cols)
+    for col in 0 ..< state.cols:
+      rowCells[col] = monoCellFor(
+        state, hl, row, col, highlight.startCol, highlight.endColExclusive,
+        blockCursorActive,
       )
-    renders.addSingleLineText(
-      z,
-      tab.label,
-      runtime.monoFont,
-      tabTextColor,
-      box.x + textInset,
-      tabTextY,
-      max(20, box.w - textInset * 2 - TopBarTabCloseGap - TopBarTabCloseHitWidth),
-    )
-    let closeColor =
-      if isActive:
-        runtime.tabShadeRgba(48, 60, 78, 210, 0.30'f32).color
-      elif isHover:
-        runtime.tabShadeRgba(225, 234, 246, 232, 0.72'f32).color
+    runtime.editor.replaceCells(row, 0, rowCells)
+
+  if state.cursorInGrid():
+    runtime.editor.setCursorPosition(state.cursorRow, state.cursorCol)
+    let style = state.currentCursorStyle()
+    runtime.editor.cursorStyle =
+      if state.cursorStyleEnabled:
+        style.monoCursorStyle()
       else:
-        runtime.tabShadeRgba(212, 224, 240, 212, 0.64'f32).color
-    renders.addSingleLineText(
-      z,
-      "x",
-      runtime.monoFont,
-      closeColor,
-      closeBox.x + max(0.0'f32, (closeBox.w - TopBarTabCloseGlyphWidth) * 0.5'f32),
-      closeBox.y + max(0.0'f32, (closeBox.h - runtime.monoFont.size) * 0.5'f32) -
-        TopBarTabCloseLift,
-      TopBarTabCloseGlyphWidth,
+        nk.mtcBlock
+    let cursorColors = resolveCursorCellColors(
+      state, hl, state.renderedCell(state.cursorRow, state.cursorCol), style
     )
-
-  let plusFill =
-    if runtime.hoverNewTab:
-      linear(rgba(244, 250, 255, 176), rgba(204, 218, 237, 154), axis = fgaY)
-    else:
-      linear(rgba(230, 240, 253, 140), rgba(183, 199, 222, 120), axis = fgaY)
-  let plusShadows = [
-    RenderShadow(
-      style: DropShadow, blur: 7, spread: 0, x: 0, y: 2, fill: rgba(0, 0, 0, 22).color
-    ),
-    RenderShadow(
-      style: InnerShadow,
-      blur: 6,
-      spread: 0,
-      x: 0,
-      y: -2,
-      fill: rgba(255, 255, 255, 96).color,
-    ),
-    RenderShadow(
-      style: InnerShadow,
-      blur: 7,
-      spread: 0,
-      x: 0,
-      y: 2,
-      fill: rgba(12, 17, 24, 24).color,
-    ),
-    RenderShadow(),
-  ]
-  let plusBox = rect(
-    newTabRect.x,
-    newTabRect.y,
-    newTabRect.w,
-    max(1.0'f32, newTabRect.h - TopBarInactiveBottomGap),
-  )
-  discard renders.addRoot(
-    z,
-    Fig(
-      kind: nkRectangle,
-      childCount: 0,
-      zlevel: z,
-      screenBox: plusBox,
-      fill: plusFill,
-      corners: [6, 6, 0, 0],
-      shadows: plusShadows,
-    ),
-  )
-  discard renders.addRoot(
-    z,
-    Fig(
-      kind: nkRectangle,
-      childCount: 0,
-      zlevel: z,
-      screenBox: rect(
-        plusBox.x + buttonTopStrokeInset,
-        plusBox.y,
-        max(1, plusBox.w - buttonTopStrokeInset * 2),
-        1,
-      ),
-      fill: rgba(246, 250, 255, 98).color,
-    ),
-  )
-  discard renders.addRoot(
-    z,
-    Fig(
-      kind: nkRectangle,
-      childCount: 0,
-      zlevel: z,
-      screenBox: rect(plusBox.x, plusBox.y + plusBox.h - 1, plusBox.w, 1),
-      fill: rgba(12, 17, 24, 36).color,
-    ),
-  )
-  renders.addSingleLineText(
-    z,
-    "+",
-    runtime.monoFont,
-    rgba(230, 238, 249, 250).color,
-    plusBox.x + max(0.0'f32, (plusBox.w - 10.0'f32) * 0.5'f32),
-    plusBox.y + max(0.0'f32, (plusBox.h - runtime.monoFont.size) * 0.5'f32) -
-      TopBarTextLift,
-    10.0'f32,
-  )
-
-  # Content-top separator: thicker white band with an active-tab blend segment.
-  if hasActiveTab:
-    if activeTabBox.x > 0:
-      discard renders.addRoot(
-        z,
-        Fig(
-          kind: nkRectangle,
-          childCount: 0,
-          zlevel: z,
-          screenBox: rect(0, contentTopY, activeTabBox.x, separatorH),
-          fill: activeBlendColor,
-        ),
-      )
-    let activeRight = activeTabBox.x + activeTabBox.w
-    if activeRight < logicalSize.x:
-      discard renders.addRoot(
-        z,
-        Fig(
-          kind: nkRectangle,
-          childCount: 0,
-          zlevel: z,
-          screenBox:
-            rect(activeRight, contentTopY, logicalSize.x - activeRight, separatorH),
-          fill: activeBlendColor,
-        ),
-      )
-    discard renders.addRoot(
-      z,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: z,
-        screenBox: rect(activeTabBox.x, contentTopY, activeTabBox.w, separatorH),
-        fill: activeBlendColor,
-      ),
-    )
+    runtime.editor.cursorColor =
+      if state.cursorStyleEnabled:
+        cursorColors.fill
+      else:
+        rgba(220, 220, 220, 80).color
+    runtime.editor.cursorVisible = runtime.cursorVisible and not blockCursorActive
   else:
-    discard renders.addRoot(
-      z,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: z,
-        screenBox: rect(0, contentTopY, logicalSize.x, separatorH),
-        fill: activeBlendColor,
-      ),
-    )
-
-proc redrawGui*(runtime: GuiRuntime) =
-  if runtime.state.isNil or runtime.hl.isNil:
-    return
-  runtime.renderer.beginFrame()
-  let sz = runtime.window.logicalSize()
-  let contentSz = runtime.contentLogicalSize()
-  let phys = vec2(runtime.window.size())
-  var renders = makeRenderTree(
-    contentSz.x,
-    contentSz.y,
-    runtime.monoFont,
-    runtime.state[],
-    runtime.hl[],
-    runtime.cellW,
-    runtime.cellH,
-    runtime.cursorVisible,
-  )
-  renders.offsetRendersY(runtime.topBarHeight)
-  runtime.renderTopBar(renders, sz)
-  dumpFigNodes(
-    renders,
-    runtime.figNodesDumpPath,
-    sz,
-    phys,
-    figUiScale(),
-    runtime.window.contentScale(),
-  )
-  runtime.renderer.renderFrame(renders, sz)
-  runtime.renderer.endFrame()
+    runtime.editor.cursorVisible = false
 
 proc updateCursorBlink(runtime: GuiRuntime): bool =
   if runtime.state.isNil:
@@ -1225,7 +689,9 @@ proc copyVisualSelectionToClipboard(runtime: GuiRuntime): bool =
 
     var copiedText = ""
     rpcUnpack(regResp.result, copiedText)
-    if not runtime.window.isNil:
+    if not runtime.kitWindow.isNil:
+      discard nk.generalPasteboard().setPlainText(copiedText)
+    elif not runtime.window.isNil:
       runtime.window.clipboard.text = copiedText
     return true
   except CatchableError as err:
@@ -1234,9 +700,13 @@ proc copyVisualSelectionToClipboard(runtime: GuiRuntime): bool =
 
 proc pasteClipboard(runtime: GuiRuntime): bool =
   try:
-    if runtime.window.isNil:
-      return false
-    let clipboardText = runtime.window.clipboard.text()
+    let clipboardText =
+      if not runtime.kitWindow.isNil:
+        nk.generalPasteboard().plainText()
+      elif not runtime.window.isNil:
+        runtime.window.clipboard.text()
+      else:
+        ""
     if clipboardText.len == 0:
       return true
     return runtime.safeRequest("nvim_paste", rpcPackParams(clipboardText, false, -1))
@@ -1262,23 +732,10 @@ proc handleCmdShortcut(runtime: GuiRuntime, key: siwin.Key): bool =
 proc tryResizeUi*(runtime: GuiRuntime)
 proc adjustFontSize(runtime: GuiRuntime, delta: float32): bool
 
-proc resolveDataDir(fontTypeface: string): string =
-  let appDir = getAppDir()
-  let candidates =
-    @[
-      normalizedPath(appDir / ".." / "data"),
-      normalizedPath(appDir / "data"),
-      normalizedPath(getCurrentDir() / "data"),
-    ]
-  for dir in candidates:
-    if fileExists(dir / fontTypeface):
-      return dir
-  result = candidates[0]
-
 proc sourceDataDir(): string =
   normalizedPath(parentDir(currentSourcePath()) / ".." / "data")
 
-proc formatModifierSet(modifiers: ModifierView): string =
+proc formatModifierSet(modifiers: ModifierView): string {.used.} =
   if siwin.ModifierKey.shift in modifiers:
     result.add "S"
   if siwin.ModifierKey.control in modifiers:
@@ -1294,7 +751,7 @@ proc formatModifierSet(modifiers: ModifierView): string =
   if result.len == 0:
     result = "-"
 
-proc formatInputText(text: string): string =
+proc formatInputText(text: string): string {.used.} =
   for r in text.runes:
     let code = int(r)
     if code >= 32 and code < 127:
@@ -1335,37 +792,6 @@ proc trySetWindowIcon(window: siwin.Window) =
   except CatchableError as err:
     warn "failed to set window icon", path = iconPath, error = err.msg
 
-proc logicalMousePos(runtime: GuiRuntime): Vec2 =
-  inputPosToLogical(
-    vec2(ivec2(runtime.window.mouse.pos.x.int32, runtime.window.mouse.pos.y.int32)),
-    runtime.window.inputUsesBackingPixels(),
-    runtime.window.inputDeviceScale(),
-  )
-
-proc mouseCell(runtime: GuiRuntime): tuple[row, col: int] =
-  if runtime.state.isNil:
-    return (0, 0)
-  let mousePos = runtime.logicalMousePos()
-  let contentPos = vec2(mousePos.x, max(0.0'f32, mousePos.y - runtime.topBarHeight))
-  result = mouseGridCell(
-    contentPos, runtime.state.rows, runtime.state.cols, runtime.cellW, runtime.cellH
-  )
-
-proc handleTopBarHover(runtime: GuiRuntime, mousePos: Vec2): bool =
-  var hoverTab = -1
-  var hoverNewTab = false
-  if mousePos.y < runtime.topBarHeight:
-    let hit = runtime.topBarHit(mousePos)
-    hoverTab = hit.tabIdx
-    hoverNewTab = hit.newTab
-  if hoverTab == runtime.hoverTab and hoverNewTab == runtime.hoverNewTab:
-    return false
-  runtime.hoverTab = hoverTab
-  runtime.hoverNewTab = hoverNewTab
-  if not runtime.state.isNil:
-    runtime.state.needsRedraw = true
-  true
-
 proc mainDirForNewTab(runtime: GuiRuntime): string =
   let active = runtime.activeTabRef()
   if not active.isNil and active.mainDir.len > 0:
@@ -1373,21 +799,6 @@ proc mainDirForNewTab(runtime: GuiRuntime): string =
   if runtime.baseMainDir.len > 0:
     return runtime.baseMainDir
   normalizedPath(getCurrentDir())
-
-proc handleTopBarClick(runtime: GuiRuntime, mousePos: Vec2): bool =
-  if mousePos.y >= runtime.topBarHeight:
-    return false
-  let hit = runtime.topBarHit(mousePos)
-  if hit.closeTabIdx >= 0:
-    discard runtime.closeTab(hit.closeTabIdx)
-    return true
-  if hit.newTab:
-    discard runtime.addProcessTab(runtime.mainDirForNewTab())
-    return true
-  if hit.tabIdx >= 0:
-    discard runtime.selectTab(hit.tabIdx)
-    return true
-  true
 
 proc sendMouseInput(runtime: GuiRuntime, button, action: string, row, col: int): bool =
   if button.len == 0:
@@ -1400,26 +811,6 @@ proc sendMouseInput(runtime: GuiRuntime, button, action: string, row, col: int):
     "nvim_input_mouse", rpcPackParams(button, action, mods, 0, row, col)
   )
 
-proc handleMouseButton(
-    runtime: GuiRuntime, button: siwin.MouseButton, action: string
-): bool =
-  let mouseButton = mouseButtonToNvimButton(button)
-  if mouseButton.len == 0:
-    return false
-  let cell = runtime.mouseCell()
-  discard runtime.sendMouseInput(mouseButton, action, cell.row, cell.col)
-  result = true
-
-proc handleMouseMultiClick(runtime: GuiRuntime, clickCount: int): bool =
-  if runtime.state.isNil:
-    return false
-  let cell = runtime.mouseCell()
-  let multiInput = multiClickToNvimInput(clickCount, cell.row, cell.col)
-  if multiInput.len == 0:
-    return false
-  runtime.state[].setPanelHighlight(cell.row, cell.col)
-  result = runtime.safeRequest("nvim_input", rpcPackParams(multiInput))
-
 proc selectTabByOffset(runtime: GuiRuntime, offset: int): bool =
   let n = runtime.tabs.len
   if n <= 0:
@@ -1429,6 +820,31 @@ proc selectTabByOffset(runtime: GuiRuntime, offset: int): bool =
     idx = 0
   let next = ((idx + offset) mod n + n) mod n
   result = runtime.selectTab(next)
+
+proc toSiwinKey(key: nk.Key): siwin.Key =
+  static:
+    doAssert ord(nk.keyA) == ord(siwin.Key.a)
+    doAssert ord(nk.keyNumpadDot) == ord(siwin.Key.npadDot)
+    doAssert ord(nk.keyLevel5Shift) == ord(siwin.Key.level5_shift)
+  if key.ord < ord(low(siwin.Key)) or key.ord > ord(high(siwin.Key)):
+    return siwin.Key.unknown
+  siwin.Key(key.ord)
+
+proc toSiwinModifiers(modifiers: set[nk.KeyModifier]): ModifierView =
+  if nk.kmShift in modifiers:
+    result.incl siwin.ModifierKey.shift
+  if nk.kmControl in modifiers:
+    result.incl siwin.ModifierKey.control
+  if nk.kmOption in modifiers:
+    result.incl siwin.ModifierKey.alt
+  if nk.kmCommand in modifiers:
+    result.incl siwin.ModifierKey.system
+
+proc toSiwinMouseButton(button: nk.MouseButton): siwin.MouseButton =
+  case button
+  of nk.mbPrimary: siwin.MouseButton.left
+  of nk.mbSecondary: siwin.MouseButton.right
+  of nk.mbOther: siwin.MouseButton.middle
 
 proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView) =
   if runtime.state.isNil:
@@ -1442,6 +858,15 @@ proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView
   if fontDelta != 0.0'f32:
     runtime.state[].clearPanelHighlight()
     discard runtime.adjustFontSize(fontDelta)
+    return
+  let newTabShortcutDown =
+    when defined(macosx):
+      cmdDown
+    else:
+      ctrlDown and shiftDown
+  if newTabShortcutDown and key == siwin.Key.t:
+    runtime.state[].clearPanelHighlight()
+    discard runtime.addProcessTab(runtime.mainDirForNewTab())
     return
   if cmdDown and shiftDown:
     if key == siwin.Key.lbracket:
@@ -1466,6 +891,74 @@ proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView
   if input.len > 0:
     discard runtime.safeRequest("nvim_input", rpcPackParams(input))
 
+proc handleNeonimTextInput(editor: NeonimEditor, text: string) =
+  if editor.isNil or editor.runtime.isNil:
+    return
+  let runtime = editor.runtime
+  trace "input text event",
+    text = formatInputText(text),
+    modifiers = formatModifierSet(runtime.modifiers),
+    repeated = false
+  if runtime.state.isNil:
+    return
+  if siwin.ModifierKey.control in runtime.modifiers:
+    return
+  if siwin.ModifierKey.alt in runtime.modifiers:
+    return
+  if siwin.ModifierKey.system in runtime.modifiers:
+    return
+  runtime.state[].clearPanelHighlight()
+  runtime.state[].clearCommittedCmdline()
+  for r in text.runes:
+    let code = int(r)
+    if code < 32 or code == 127:
+      continue
+    discard runtime.safeRequest("nvim_input", rpcPackParams(runeToNvimInput(r)))
+
+protocol NeonimEditorInput of nk.TextInputProtocol:
+  method insertText(editor: NeonimEditor, text: string) =
+    editor.handleNeonimTextInput(text)
+
+proc handleMonoTextRawEvent(runtime: GuiRuntime, event: nk.MonoTextRawEvent): bool =
+  if runtime.isNil:
+    return true
+  case event.kind
+  of nk.mtreKeyDown:
+    runtime.modifiers = event.keyEvent.modifiers.toSiwinModifiers()
+    runtime.handleKeyPress(event.keyEvent.key.toSiwinKey(), runtime.modifiers)
+  of nk.mtreFlagsChanged:
+    runtime.modifiers = event.keyEvent.modifiers.toSiwinModifiers()
+  of nk.mtreMouseDown:
+    runtime.modifiers = event.mouseEvent.modifiers.toSiwinModifiers()
+    if event.mouseEvent.clickCount >= 2 and event.mouseEvent.clickCount <= 4:
+      if not runtime.state.isNil:
+        runtime.state[].setPanelHighlight(event.row, event.column)
+      let input =
+        multiClickToNvimInput(event.mouseEvent.clickCount, event.row, event.column)
+      if input.len > 0:
+        discard runtime.safeRequest("nvim_input", rpcPackParams(input))
+    else:
+      let button = mouseButtonToNvimButton(event.mouseEvent.button.toSiwinMouseButton())
+      discard runtime.sendMouseInput(button, "press", event.row, event.column)
+  of nk.mtreMouseDragged:
+    runtime.modifiers = event.mouseEvent.modifiers.toSiwinModifiers()
+    let button = mouseButtonToNvimButton(event.mouseEvent.button.toSiwinMouseButton())
+    discard runtime.sendMouseInput(button, "drag", event.row, event.column)
+  of nk.mtreMouseUp:
+    runtime.modifiers = event.mouseEvent.modifiers.toSiwinModifiers()
+    let button = mouseButtonToNvimButton(event.mouseEvent.button.toSiwinMouseButton())
+    discard runtime.sendMouseInput(button, "release", event.row, event.column)
+  of nk.mtreScrollWheel:
+    runtime.modifiers = event.scrollEvent.modifiers.toSiwinModifiers()
+    let actions = mouseScrollActions(
+      vec2(event.scrollEvent.deltaX, event.scrollEvent.deltaY),
+      speedMultiplier = runtime.scrollSpeedMultiplier,
+      invertDirection = runtime.scrollDirectionInverted,
+    )
+    for action in actions:
+      discard runtime.sendMouseInput("wheel", action, event.row, event.column)
+  true
+
 proc adjustFontSize(runtime: GuiRuntime, delta: float32): bool =
   if delta == 0.0'f32:
     return false
@@ -1475,6 +968,8 @@ proc adjustFontSize(runtime: GuiRuntime, delta: float32): bool =
     return false
   runtime.monoFont.size = next
   runtime.config.fontSize = next
+  if not runtime.editor.isNil:
+    runtime.editor.fontSize = next
   let (cellW, cellH) = monoMetrics(runtime.monoFont)
   runtime.cellW = cellW
   runtime.cellH = cellH
@@ -1525,19 +1020,21 @@ proc handleGuiTest*(runtime: GuiRuntime) =
   if cfg.timeoutSeconds > 0 and (epochTime() - runtime.testStart) > cfg.timeoutSeconds:
     runtime.appRunning = false
 
-proc pollWindowEvents(runtime: GuiRuntime) =
-  if runtime.window.isNil:
-    return
-  if not runtime.windowStarted:
-    runtime.window.firstStep(makeVisible = true)
-    runtime.windowStarted = true
-  if runtime.window.opened:
-    runtime.window.step()
-
 proc stepGui*(runtime: GuiRuntime): bool =
-  runtime.pollWindowEvents()
+  if runtime.isNil:
+    return false
+  if not runtime.app.isNil:
+    discard runtime.app.runForFrames(1)
+  if not runtime.kitWindow.isNil and runtime.kitWindow.isClosed():
+    runtime.appRunning = false
+  runtime.tryResizeUi()
   if not runtime.iconRetriedAfterFirstStep:
-    trySetWindowIcon(runtime.window)
+    if not runtime.kitWindow.isNil:
+      let nativeWindow = runtime.kitWindow.nativeWindowOrNil()
+      if not nativeWindow.isNil:
+        trySetWindowIcon(nativeWindow)
+    elif not runtime.window.isNil:
+      trySetWindowIcon(runtime.window)
     runtime.iconRetriedAfterFirstStep = true
   for tab in runtime.tabs:
     if not tab.isNil and not tab.client.isNil:
@@ -1545,12 +1042,15 @@ proc stepGui*(runtime: GuiRuntime): bool =
   runtime.removeDeadTabs()
   if runtime.tabs.len == 0:
     return false
+  if runtime.tabsNeedSync:
+    runtime.syncDocumentTabs()
+    runtime.tabsNeedSync = false
   runtime.handleGuiTest()
   if runtime.updateCursorBlink() and not runtime.state.isNil:
     runtime.state.needsRedraw = true
   var didRedraw = false
   if (not runtime.state.isNil) and runtime.state.needsRedraw:
-    runtime.redrawGui()
+    runtime.syncEditorView()
     runtime.state.needsRedraw = false
     didRedraw = true
     runtime.frameIdle = 0
@@ -1568,7 +1068,12 @@ proc stepGui*(runtime: GuiRuntime): bool =
 
 proc shutdownGui*(runtime: GuiRuntime) =
   when not defined(emscripten):
-    runtime.window.close()
+    if not runtime.kitWindow.isNil and not runtime.kitWindow.isClosed():
+      runtime.kitWindow.close()
+    elif not runtime.window.isNil:
+      runtime.window.close()
+  if not runtime.app.isNil:
+    runtime.app.stop()
   for tab in runtime.tabs:
     if not tab.isNil and not tab.client.isNil:
       tab.client.stop()
@@ -1629,105 +1134,93 @@ proc uiScaleFromEnv*(fallbackScale: float32): float32 =
     warn "invalid ui scale, must be numeric", env = EnvKey, value = raw
   fallbackScale
 
-proc parseOptionalColorEnv(
-    primaryKey: string, legacyKey: string, desc: string
-): tuple[enabled: bool, r, g, b: int] =
-  var usedKey = primaryKey
-  var raw = getEnv(primaryKey)
-  if raw.len == 0 and legacyKey.len > 0:
-    usedKey = legacyKey
-    raw = getEnv(legacyKey)
-  if raw.len == 0:
-    return (false, 0, 0, 0)
+proc registerBundledTypeface(name: string) =
+  case name
+  of "HackNerdFont-Regular.ttf":
+    registerStaticTypeface(
+      "HackNerdFont-Regular.ttf", ".." / "data" / "HackNerdFont-Regular.ttf"
+    )
+  of "Ubuntu.ttf":
+    registerStaticTypeface("Ubuntu.ttf", ".." / "data" / "Ubuntu.ttf")
+  else:
+    discard
 
-  let trimmed = raw.strip()
-  if trimmed.len == 0:
-    return (false, 0, 0, 0)
+proc newNeonimEditor(runtime: GuiRuntime, frame: nk.Rect): NeonimEditor =
+  result = NeonimEditor()
+  nk.initMonoTextViewFields(result, frame = frame, editable = true)
+  result.runtime = runtime
+  discard result.withProtocol(NeonimEditorInput)
 
-  var hex = trimmed
-  if hex.startsWith("#"):
-    hex = hex[1 .. ^1]
-  if hex.len == 6:
-    try:
-      let v = parseHexInt(hex)
-      return (true, (v shr 16) and 0xFF, (v shr 8) and 0xFF, v and 0xFF)
-    except ValueError:
-      discard
-
-  let parts = trimmed.split(',')
-  if parts.len == 3:
-    try:
-      let r = parts[0].strip().parseInt()
-      let g = parts[1].strip().parseInt()
-      let b = parts[2].strip().parseInt()
-      if r < 0 or r > 255 or g < 0 or g > 255 or b < 0 or b > 255:
-        warn "invalid color channel, expected 0..255",
-          color = desc, env = usedKey, value = raw
-        return (false, 0, 0, 0)
-      return (true, r, g, b)
-    except ValueError:
-      discard
-
-  warn "invalid color, expected #RRGGBB or R,G,B",
-    color = desc, env = usedKey, value = raw
-  (false, 0, 0, 0)
-
-proc tabColorFromEnv*(): tuple[enabled: bool, r, g, b: int] =
-  parseOptionalColorEnv(
-    "NEONIM_TAB_ACCENT_COLOR", "NEONIM_TAB_COLOR", "tab accent color"
+proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect) =
+  runtime.app = nk.sharedApplication()
+  runtime.kitWindow = nk.newWindow(runtime.config.windowTitle, frame = frame)
+  runtime.rootView = nk.newView()
+  runtime.layoutView = nk.newStackView(nk.laVertical)
+  runtime.documentTabs = nk.newDocumentTabs()
+  runtime.editor = newNeonimEditor(
+    runtime,
+    nk.initRect(
+      0.0'f32,
+      0.0'f32,
+      frame.size.width,
+      max(1.0'f32, frame.size.height - runtime.topBarHeight),
+    ),
   )
 
-proc tabShadeColorFromEnv*(): tuple[enabled: bool, r, g, b: int] =
-  parseOptionalColorEnv(
-    "NEONIM_TAB_SHADE_COLOR", "NEONIM_TAB_SHADING_COLOR", "tab shade color"
+  runtime.documentTabs.delegate = runtime
+  runtime.documentTabs.defaultTabStyle = nk.dtsRounded
+  runtime.documentTabs.showsHorizontalScroller = true
+  runtime.documentTabs.allowsClosing = true
+  runtime.documentTabs.allowsTabReordering = true
+  runtime.documentTabs.setHuggingPriority(nk.LayoutPriorityRequired, nk.laVertical)
+  runtime.documentTabs.setCompressionPriority(nk.LayoutPriorityRequired, nk.laVertical)
+
+  runtime.editor.fontName = runtime.config.fontTypeface
+  runtime.editor.fontSize = runtime.config.fontSize
+  runtime.editor.padding = 0.0'f32
+  runtime.editor.rawEventPolicy = nk.initMonoTextRawEventPolicy(
+    forwardedEvents = nk.AllMonoTextRawEvents, capturedEvents = nk.AllMonoTextRawEvents
   )
+  runtime.editor.rawEventHandler = proc(event: nk.MonoTextRawEvent): bool =
+    runtime.handleMonoTextRawEvent(event)
+  runtime.editor.setHuggingPriority(nk.LayoutPriorityLow, nk.laVertical)
+  runtime.editor.setCompressionPriority(nk.LayoutPriorityLow, nk.laVertical)
+
+  runtime.layoutView.spacing = 0.0'f32
+  runtime.layoutView.alignment = nk.svaFill
+  runtime.layoutView.distribution = nk.svdFill
+  runtime.layoutView.addArrangedSubview(runtime.documentTabs, runtime.editor)
+  runtime.rootView.addSubview(runtime.layoutView)
+  runtime.layoutView.pinEdges(
+    toGuide = runtime.rootView.contentLayoutGuide(),
+    edges = {nk.leLeft, nk.leTop, nk.leRight, nk.leBottom},
+  )
+
+  runtime.kitWindow.setContentView(runtime.rootView)
+  runtime.app.addWindow(runtime.kitWindow)
+  discard runtime.kitWindow.makeFirstResponder(runtime.editor)
+  runtime.kitWindow.makeKeyAndOrderFront()
 
 proc initGuiRuntime*(
     config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig()
 ): GuiRuntime =
-  #let dataDir = resolveDataDir(config.fontTypeface)
-  #when not defined(emscripten):
-  #setFigDataDir(dataDir)
-
   new(result)
+  initResponder(result)
+  discard result.withProtocol(NeonimDocumentTabsDelegate)
   result.config = config
   result.testCfg = testCfg
   result.appRunning = true
   result.scrollSpeedMultiplier = scrollSpeedMultiplierFromEnv()
   result.scrollDirectionInverted = scrollDirectionInvertedFromEnv()
-  let tabColor = tabColorFromEnv()
-  result.tabColorEnabled = tabColor.enabled
-  result.tabColorR = tabColor.r
-  result.tabColorG = tabColor.g
-  result.tabColorB = tabColor.b
-  let tabShadeColor = tabShadeColorFromEnv()
-  result.tabShadeEnabled = tabShadeColor.enabled
-  result.tabShadeR = tabShadeColor.r
-  result.tabShadeG = tabShadeColor.g
-  result.tabShadeB = tabShadeColor.b
   result.testStart = epochTime()
-  result.figNodesDumpPath = getEnv("NEONIM_FIG_NODES_OUT")
-  let size = ivec2(1000, 700)
-  let title = "Neonim"
+  let frame = nk.initRect(120.0'f32, 120.0'f32, 1000.0'f32, 700.0'f32)
+  registerBundledTypeface(config.fontTypeface)
+  registerBundledTypeface(config.defaultTypeface)
+  registerBundledTypeface("HackNerdFont-Regular.ttf")
+  registerBundledTypeface("Ubuntu.ttf")
   let typefaceId = loadTypeface(config.fontTypeface, [config.defaultTypeface])
   result.monoFont = FigFont(typefaceId: typefaceId, size: config.fontSize)
-  when UseVulkanBackend:
-    result.renderer =
-      newFigRenderer(atlasSize = 4096, backendState = siwin.SiwinRenderBackend())
-    result.window = siwin.newSiwinWindow(
-      result.renderer, size = size, fullscreen = false, title = title
-    )
-  else:
-    result.window = siwin.newSiwinWindow(size = size, fullscreen = false, title = title)
-    result.renderer =
-      newFigRenderer(atlasSize = 4096, backendState = siwin.SiwinRenderBackend())
-  if result.window.supportsCustomTitlebar():
-    result.window.customTitlebar = true
-  result.mouseDown = {}
   result.modifiers = {}
-  result.lastScroll = vec2(0, 0)
-  result.hoverTab = -1
-  result.hoverNewTab = false
   result.activeTab = -1
   result.nextTabId = 1
   result.cursorBlinkStart = epochTime()
@@ -1736,14 +1229,11 @@ proc initGuiRuntime*(
   result.cursorBlinkModeIdx = -1
   result.cursorVisible = true
   result.baseMainDir = guessMainDir(config.nvimArgs)
-  trySetWindowIcon(result.window)
-
-  setFigUiScale uiScaleFromEnv(result.window.contentScale())
   result.topBarHeight = TopBarHeight
-  if size != size.scaled():
-    result.window.size = size.scaled()
-
-  result.renderer.setupBackend(result.window)
+  result.buildNimKitViews(frame)
+  let nativeWindow = result.kitWindow.nativeWindowOrNil()
+  if not nativeWindow.isNil:
+    trySetWindowIcon(nativeWindow)
   let (cellW, cellH) = monoMetrics(result.monoFont)
   result.cellW = cellW
   result.cellH = cellH
@@ -1752,96 +1242,7 @@ proc initGuiRuntime*(
   let runtime = result
   if not runtime.addProcessTab(runtime.baseMainDir, config.nvimArgs):
     raise newException(NeovimError, "failed to launch initial nvim process tab")
-
-  runtime.window.eventsHandler.onClose = proc(_: siwin.CloseEvent) =
-    runtime.appRunning = false
-  runtime.window.eventsHandler.onResize = proc(_: siwin.ResizeEvent) =
-    runtime.tryResizeUi()
-    if not runtime.state.isNil:
-      runtime.state.needsRedraw = true
-
-  runtime.window.eventsHandler.onMouseMove = proc(_: siwin.MouseMoveEvent) =
-    let mousePos = runtime.logicalMousePos()
-    discard runtime.handleTopBarHover(mousePos)
-    let dragButton = mouseDragButtonToNvimButton(runtime.mouseDown)
-    if dragButton.len == 0:
-      return
-    if mousePos.y < runtime.topBarHeight:
-      return
-    let cell = runtime.mouseCell()
-    discard runtime.sendMouseInput(dragButton, "drag", cell.row, cell.col)
-
-  runtime.window.eventsHandler.onScroll = proc(e: siwin.ScrollEvent) =
-    if runtime.logicalMousePos().y < runtime.topBarHeight:
-      return
-    runtime.lastScroll = vec2(e.deltaX.float32, e.delta.float32)
-    let actions = mouseScrollActions(
-      runtime.lastScroll,
-      speedMultiplier = runtime.scrollSpeedMultiplier,
-      invertDirection = runtime.scrollDirectionInverted,
-    )
-    if actions.len == 0:
-      return
-    let cell = runtime.mouseCell()
-    for action in actions:
-      discard runtime.sendMouseInput("wheel", action, cell.row, cell.col)
-
-  runtime.window.eventsHandler.onTextInput = proc(e: siwin.TextInputEvent) =
-    trace "input text event",
-      text = formatInputText(e.text),
-      modifiers = formatModifierSet(runtime.modifiers),
-      repeated = e.repeated
-    let ctrlDown = siwin.ModifierKey.control in runtime.modifiers
-    let altDown = siwin.ModifierKey.alt in runtime.modifiers
-    let cmdDown = siwin.ModifierKey.system in runtime.modifiers
-    if ctrlDown:
-      return
-    if altDown:
-      return
-    if cmdDown:
-      return
-    if runtime.state.isNil:
-      return
-    runtime.state[].clearPanelHighlight()
-    runtime.state[].clearCommittedCmdline()
-    for r in e.text.runes:
-      let code = int(r)
-      # Some platforms emit control-code text for special keys (e.g. Up -> 0x1E).
-      # Those keys are already handled by onKey, so ignore non-printable text input.
-      if code < 32 or code == 127:
-        continue
-      let s = runeToNvimInput(r)
-      discard runtime.safeRequest("nvim_input", rpcPackParams(s))
-
-  runtime.window.eventsHandler.onKey = proc(e: siwin.KeyEvent) =
-    runtime.modifiers = e.modifiers
-    trace "input key event",
-      key = $e.key,
-      modifiers = formatModifierSet(e.modifiers),
-      pressed = e.pressed,
-      repeated = e.repeated,
-      generated = e.generated
-    if not e.pressed:
-      return
-    runtime.handleKeyPress(e.key, e.modifiers)
-
-  runtime.window.eventsHandler.onMouseButton = proc(e: siwin.MouseButtonEvent) =
-    if e.pressed:
-      if e.button == siwin.MouseButton.left and
-          runtime.handleTopBarClick(runtime.logicalMousePos()):
-        return
-      runtime.mouseDown.incl(e.button)
-      discard runtime.handleMouseButton(e.button, "press")
-    else:
-      if e.button notin runtime.mouseDown:
-        return
-      runtime.mouseDown.excl(e.button)
-      discard runtime.handleMouseButton(e.button, "release")
-
-  runtime.window.eventsHandler.onClick = proc(e: siwin.ClickEvent) =
-    if e.double and e.button == siwin.MouseButton.left and
-        runtime.logicalMousePos().y >= runtime.topBarHeight:
-      discard runtime.handleMouseMultiClick(2)
+  runtime.syncEditorView()
 
 proc runFigdrawGuiWithTest*(config: GuiConfig, testCfg: GuiTestConfig): bool =
   let runtime = initGuiRuntime(config, testCfg)

@@ -8,10 +8,10 @@ import figdraw/windowing/siwinshim as siwin
 import neonim/gui_backend
 import neonim/ui_linegrid
 
-var cachedFontId: FontId = FontId(0)
+var cachedFontId: TypefaceId = TypefaceId(0)
 
 proc testMonoFont(size = 16.0'f32): FigFont =
-  if cachedFontId == FontId(0):
+  if cachedFontId == TypefaceId(0):
     let dataDir = getCurrentDir() / "data"
     doAssert fileExists(dataDir / "HackNerdFont-Regular.ttf")
     setFigDataDir(dataDir)
