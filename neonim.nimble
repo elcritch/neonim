@@ -10,7 +10,7 @@ bin           = @["neonim"]
 requires "nim >= 2.2.6"
 requires "msgpack4nim"
 requires "chronicles"
-requires "https://github.com/elcritch/figdraw[siwin] >= 0.22.8"
+requires "https://github.com/elcritch/figdraw[siwin] >= 0.26.1"
 requires "libbacktrace"
 requires "gh:elcritch/merenda"
 
