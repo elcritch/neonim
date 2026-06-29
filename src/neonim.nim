@@ -51,7 +51,9 @@ type
     kitWindow*: nk.Window
     rootView*: nk.View
     layoutView*: nk.StackView
+    tabRow*: nk.StackView
     documentTabs*: nk.DocumentTabs
+    newTabButton*: nk.Button
     editor*: NeonimEditor
     modifiers: ModifierView
     tabs: seq[NvimProcessTab]
@@ -95,16 +97,6 @@ proc contentLogicalSize(runtime: GuiRuntime): Vec2 =
     return vec2(1000.0'f32, max(1.0'f32, 700.0'f32 - runtime.topBarHeight))
   let sz = runtime.window.logicalSize()
   vec2(sz.x, max(1.0'f32, sz.y - runtime.topBarHeight))
-
-proc homeShortPath(path: string): string =
-  var normalized = normalizedPath(path)
-  let homeDir = normalizedPath(getHomeDir())
-  if homeDir.len > 0 and normalized.startsWith(homeDir):
-    if normalized.len == homeDir.len:
-      return "~"
-    if normalized[homeDir.len] == DirSep:
-      return "~" & normalized[homeDir.len .. ^1]
-  normalized
 
 proc guessMainDir(args: seq[string]): string =
   var i = 0
@@ -151,7 +143,16 @@ proc guessMainDir(args: seq[string]): string =
   normalizedPath(getCurrentDir())
 
 proc tabLabelForDir(mainDir: string): string =
-  homeShortPath(mainDir)
+  let normalized =
+    if mainDir.len > 0:
+      normalizedPath(mainDir)
+    else:
+      normalizedPath(getCurrentDir())
+  if normalized == normalizedPath(getHomeDir()):
+    return "~"
+
+  let tail = splitPath(normalized).tail
+  if tail.len > 0: tail else: normalized
 
 proc rpcPackUiAttachParams(
     cols, rows: int, opts: openArray[(string, bool)]
@@ -811,6 +812,11 @@ proc mainDirForNewTab(runtime: GuiRuntime): string =
     return runtime.baseMainDir
   normalizedPath(getCurrentDir())
 
+proc openNewProcessTab(runtime: GuiRuntime): bool {.discardable.} =
+  result = runtime.addProcessTab(runtime.mainDirForNewTab())
+  if result and not runtime.kitWindow.isNil and not runtime.editor.isNil:
+    discard runtime.kitWindow.makeFirstResponder(runtime.editor)
+
 proc sendMouseInput(runtime: GuiRuntime, button, action: string, row, col: int): bool =
   if button.len == 0:
     return false
@@ -877,7 +883,7 @@ proc handleKeyPress(runtime: GuiRuntime, key: siwin.Key, modifiers: ModifierView
       ctrlDown and shiftDown
   if newTabShortcutDown and key == siwin.Key.t:
     runtime.state[].clearPanelHighlight()
-    discard runtime.addProcessTab(runtime.mainDirForNewTab())
+    discard runtime.openNewProcessTab()
     return
   if cmdDown and shiftDown:
     if key == siwin.Key.lbracket:
@@ -1167,7 +1173,9 @@ proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect) =
   runtime.kitWindow = nk.newWindow(runtime.config.windowTitle, frame = frame)
   runtime.rootView = nk.newView()
   runtime.layoutView = nk.newStackView(nk.laVertical)
+  runtime.tabRow = nk.newStackView(nk.laHorizontal)
   runtime.documentTabs = nk.newDocumentTabs()
+  runtime.newTabButton = nk.newButton("+")
   runtime.editor = newNeonimEditor(
     runtime,
     nk.initRect(
@@ -1183,8 +1191,25 @@ proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect) =
   runtime.documentTabs.showsHorizontalScroller = true
   runtime.documentTabs.allowsClosing = true
   runtime.documentTabs.allowsTabReordering = true
+  runtime.documentTabs.setHuggingPriority(nk.LayoutPriorityLow, nk.laHorizontal)
+  runtime.documentTabs.setCompressionPriority(nk.LayoutPriorityLow, nk.laHorizontal)
   runtime.documentTabs.setHuggingPriority(nk.LayoutPriorityRequired, nk.laVertical)
   runtime.documentTabs.setCompressionPriority(nk.LayoutPriorityRequired, nk.laVertical)
+
+  let newTabAction = nk.actionSelector("neonimNewTab")
+  runtime.newTabButton.action = newTabAction
+  runtime.newTabButton.target = nk.newActionTarget(newTabAction) do(
+    sender: DynamicAgent
+  ):
+    discard sender
+    discard runtime.openNewProcessTab()
+  runtime.newTabButton.reservedTitles = ["+"]
+  runtime.newTabButton.setHuggingPriority(nk.LayoutPriorityRequired, nk.laHorizontal)
+  runtime.newTabButton.setCompressionPriority(
+    nk.LayoutPriorityRequired, nk.laHorizontal
+  )
+  runtime.newTabButton.setHuggingPriority(nk.LayoutPriorityRequired, nk.laVertical)
+  runtime.newTabButton.setCompressionPriority(nk.LayoutPriorityRequired, nk.laVertical)
 
   runtime.editor.fontName = runtime.config.fontTypeface
   runtime.editor.fontSize = runtime.config.fontSize
@@ -1197,10 +1222,15 @@ proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect) =
   runtime.editor.setHuggingPriority(nk.LayoutPriorityLow, nk.laVertical)
   runtime.editor.setCompressionPriority(nk.LayoutPriorityLow, nk.laVertical)
 
+  runtime.tabRow.spacing = 0.0'f32
+  runtime.tabRow.alignment = nk.svaFill
+  runtime.tabRow.distribution = nk.svdFill
+  runtime.tabRow.addArrangedSubview(runtime.documentTabs, runtime.newTabButton)
+
   runtime.layoutView.spacing = 0.0'f32
   runtime.layoutView.alignment = nk.svaFill
   runtime.layoutView.distribution = nk.svdFill
-  runtime.layoutView.addArrangedSubview(runtime.documentTabs, runtime.editor)
+  runtime.layoutView.addArrangedSubview(runtime.tabRow, runtime.editor)
   runtime.rootView.addSubview(runtime.layoutView)
   runtime.layoutView.pinEdges(
     toGuide = runtime.rootView.contentLayoutGuide(),
