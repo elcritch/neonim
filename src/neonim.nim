@@ -568,6 +568,17 @@ proc syncEditorView(runtime: GuiRuntime) =
   else:
     runtime.editor.cursorVisible = false
 
+proc updateRuntimeMonoMetrics(runtime: GuiRuntime) =
+  if runtime.isNil:
+    return
+  if not runtime.editor.isNil:
+    let metrics = runtime.editor.monoTextMetrics()
+    runtime.cellW = metrics.cellWidth
+    runtime.cellH = metrics.lineHeight / 2.0'f32
+  else:
+    runtime.cellW = max(1.0'f32, runtime.config.fontSize * 0.56'f32)
+    runtime.cellH = max(1.0'f32, runtime.config.fontSize * 0.60'f32)
+
 proc updateCursorBlink(runtime: GuiRuntime): bool =
   if runtime.state.isNil:
     runtime.cursorVisible = true
@@ -970,15 +981,14 @@ proc adjustFontSize(runtime: GuiRuntime, delta: float32): bool =
   runtime.config.fontSize = next
   if not runtime.editor.isNil:
     runtime.editor.fontSize = next
-  let (cellW, cellH) = monoMetrics(runtime.monoFont)
-  runtime.cellW = cellW
-  runtime.cellH = cellH
+  runtime.updateRuntimeMonoMetrics()
   runtime.tryResizeUi()
   if not runtime.state.isNil:
     runtime.state.needsRedraw = true
   when not defined(emscripten):
     sleep(8)
-  info "font size", previous = current, current = next, cellW = cellW, cellH = cellH
+  info "font size",
+    previous = current, current = next, cellW = runtime.cellW, cellH = runtime.cellH
   result = true
 
 proc tryResizeUi*(runtime: GuiRuntime) =
@@ -1029,13 +1039,14 @@ proc stepGui*(runtime: GuiRuntime): bool =
     runtime.appRunning = false
   runtime.tryResizeUi()
   if not runtime.iconRetriedAfterFirstStep:
-    if not runtime.kitWindow.isNil:
+    if not runtime.kitWindow.isNil and runtime.kitWindow.nativeReady():
       let nativeWindow = runtime.kitWindow.nativeWindowOrNil()
       if not nativeWindow.isNil:
         trySetWindowIcon(nativeWindow)
+        runtime.iconRetriedAfterFirstStep = true
     elif not runtime.window.isNil:
       trySetWindowIcon(runtime.window)
-    runtime.iconRetriedAfterFirstStep = true
+      runtime.iconRetriedAfterFirstStep = true
   for tab in runtime.tabs:
     if not tab.isNil and not tab.client.isNil:
       tab.client.poll()
@@ -1218,8 +1229,7 @@ proc initGuiRuntime*(
   registerBundledTypeface(config.defaultTypeface)
   registerBundledTypeface("HackNerdFont-Regular.ttf")
   registerBundledTypeface("Ubuntu.ttf")
-  let typefaceId = loadTypeface(config.fontTypeface, [config.defaultTypeface])
-  result.monoFont = FigFont(typefaceId: typefaceId, size: config.fontSize)
+  result.monoFont = FigFont(typefaceId: TypefaceId(0), size: config.fontSize)
   result.modifiers = {}
   result.activeTab = -1
   result.nextTabId = 1
@@ -1231,13 +1241,8 @@ proc initGuiRuntime*(
   result.baseMainDir = guessMainDir(config.nvimArgs)
   result.topBarHeight = TopBarHeight
   result.buildNimKitViews(frame)
-  let nativeWindow = result.kitWindow.nativeWindowOrNil()
-  if not nativeWindow.isNil:
-    trySetWindowIcon(nativeWindow)
-  let (cellW, cellH) = monoMetrics(result.monoFont)
-  result.cellW = cellW
-  result.cellH = cellH
-  warn "mono metrics: ", cellW = cellW, cellH = cellH
+  result.updateRuntimeMonoMetrics()
+  warn "mono metrics: ", cellW = result.cellW, cellH = result.cellH
 
   let runtime = result
   if not runtime.addProcessTab(runtime.baseMainDir, config.nvimArgs):
