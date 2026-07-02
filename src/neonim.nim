@@ -5,16 +5,16 @@ import chronicles
 
 import libbacktrace
 
+import chroma
 import vmath
 import msgpack4nim
-import pkg/pixie
+import pkg/pixie as pixie except draw
 import merenda/nimkit as nk except Rect, Size, Point, Color
 import sigils/core
 import siwin/[clipboards, colorutils]
 import figdraw/windowing/siwinshim as siwin
 
-import figdraw/commons
-import figdraw/common/fonttypes
+import figdraw/commons except readImage
 import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend]
 
 const
@@ -23,6 +23,7 @@ const
   NvimDirChangedMethod = "neonim_dir_changed"
   DefaultFontSize = 16.0'f32
   TopBarHeight = 35.0'f32
+  TopBarBorderWidthEm = 0.2'f32
 
 type
   LineGridStateRef = ref LineGridState
@@ -39,6 +40,9 @@ type
   NeonimEditor = ref object of nk.MonoTextView
     runtime: GuiRuntime
 
+  NeonimTabBar = ref object of nk.StackView
+    runtime: GuiRuntime
+
   GuiRuntime* = ref object of nk.Responder
     config*: GuiConfig
     testCfg*: GuiTestConfig
@@ -51,7 +55,7 @@ type
     kitWindow*: nk.Window
     rootView*: nk.View
     layoutView*: nk.StackView
-    tabRow*: nk.StackView
+    tabRow*: NeonimTabBar
     documentTabs*: nk.DocumentTabs
     newTabButton*: nk.Button
     editor*: NeonimEditor
@@ -62,7 +66,6 @@ type
     topBarHeight: float32
     baseMainDir: string
     client*: NeovimClient
-    monoFont*: FigFont
     cellW*: float32
     cellH*: float32
     scrollSpeedMultiplier*: float32
@@ -153,6 +156,42 @@ proc tabLabelForDir(mainDir: string): string =
 
   let tail = splitPath(normalized).tail
   if tail.len > 0: tail else: normalized
+
+proc tabBarBorderWidth(fontSize: float32): float32 =
+  nk.em(TopBarBorderWidthEm).resolveLayoutLength(fontSize)
+
+protocol NeonimTabBarDrawing of nk.ViewDrawingProtocol:
+  method draw(tabBar: NeonimTabBar, context: nk.DrawContext) =
+    let bounds = tabBar.bounds()
+    if bounds.size.width <= 0.0'f32 or bounds.size.height <= 0.0'f32:
+      return
+
+    let
+      fontSize =
+        if tabBar.runtime.isNil: DefaultFontSize else: tabBar.runtime.config.fontSize
+      borderWidth = tabBarBorderWidth(fontSize)
+      inset = borderWidth / 2.0'f32
+      styleContext = nk.controlStyle(nk.srDocumentTabBar)
+      borderColor = context.appearance.resolveColor(
+        styleContext, nk.StyleBorderColor, nk.initColor(0.58, 0.62, 0.70, 1.0)
+      )
+      topY = bounds.origin.y + inset
+      bottomY = bounds.origin.y + bounds.size.height - inset
+      leftX = bounds.origin.x
+      rightX = bounds.origin.x + bounds.size.width
+
+    context.addRenderLine(
+      nk.initPoint(leftX, topY),
+      nk.initPoint(rightX, topY),
+      nk.fill(borderColor),
+      borderWidth,
+    )
+    context.addRenderLine(
+      nk.initPoint(leftX, bottomY),
+      nk.initPoint(rightX, bottomY),
+      nk.fill(borderColor),
+      borderWidth,
+    )
 
 proc rpcPackUiAttachParams(
     cols, rows: int, opts: openArray[(string, bool)]
@@ -772,7 +811,7 @@ proc formatInputText(text: string): string {.used.} =
       result.add "\\u"
       result.add code.toHex(4)
 
-proc setWindowIcon(window: siwin.Window, image: Image): bool =
+proc setWindowIcon(window: siwin.Window, image: pixie.Image): bool =
   if window.isNil:
     return false
   if image.isNil or image.width <= 0 or image.height <= 0 or image.data.len == 0:
@@ -979,11 +1018,10 @@ proc handleMonoTextRawEvent(runtime: GuiRuntime, event: nk.MonoTextRawEvent): bo
 proc adjustFontSize(runtime: GuiRuntime, delta: float32): bool =
   if delta == 0.0'f32:
     return false
-  let current = runtime.monoFont.size
+  let current = runtime.config.fontSize
   let next = min(FontSizeMax, max(FontSizeMin, current + delta))
   if abs(next - current) < 0.0001'f32:
     return false
-  runtime.monoFont.size = next
   runtime.config.fontSize = next
   if not runtime.editor.isNil:
     runtime.editor.fontSize = next
@@ -1168,12 +1206,18 @@ proc newNeonimEditor(runtime: GuiRuntime, frame: nk.Rect): NeonimEditor =
   result.runtime = runtime
   discard result.withProtocol(NeonimEditorInput)
 
+proc newNeonimTabBar(runtime: GuiRuntime): NeonimTabBar =
+  result = NeonimTabBar()
+  nk.initStackViewFields(result, nk.laHorizontal)
+  result.runtime = runtime
+  discard result.withProtocol(NeonimTabBarDrawing)
+
 proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect) =
   runtime.app = nk.sharedApplication()
   runtime.kitWindow = nk.newWindow(runtime.config.windowTitle, frame = frame)
   runtime.rootView = nk.newView()
   runtime.layoutView = nk.newStackView(nk.laVertical)
-  runtime.tabRow = nk.newStackView(nk.laHorizontal)
+  runtime.tabRow = newNeonimTabBar(runtime)
   runtime.documentTabs = nk.newDocumentTabs()
   runtime.newTabButton = nk.newButton("+")
   runtime.editor = newNeonimEditor(
@@ -1225,6 +1269,9 @@ proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect) =
   runtime.tabRow.spacing = 0.0'f32
   runtime.tabRow.alignment = nk.svaFill
   runtime.tabRow.distribution = nk.svdFill
+  runtime.tabRow.setHuggingPriority(nk.LayoutPriorityRequired, nk.laVertical)
+  runtime.tabRow.setCompressionPriority(nk.LayoutPriorityRequired, nk.laVertical)
+  nk.activate(runtime.tabRow[nk.atHeight].equalTo(runtime.topBarHeight))
   runtime.tabRow.addArrangedSubview(runtime.documentTabs, runtime.newTabButton)
 
   runtime.layoutView.spacing = 0.0'f32
@@ -1259,7 +1306,6 @@ proc initGuiRuntime*(
   registerBundledTypeface(config.defaultTypeface)
   registerBundledTypeface("HackNerdFont-Regular.ttf")
   registerBundledTypeface("Ubuntu.ttf")
-  result.monoFont = FigFont(typefaceId: TypefaceId(0), size: config.fontSize)
   result.modifiers = {}
   result.activeTab = -1
   result.nextTabId = 1
