@@ -24,6 +24,7 @@ const
   DefaultFontSize = 16.0'f32
   TopBarHeight = 35.0'f32
   TopBarBorderWidthEm = 0.2'f32
+  NeonimEditorStyleClass = "neonim-editor"
 
 type
   LineGridStateRef = ref LineGridState
@@ -159,6 +160,21 @@ proc tabLabelForDir(mainDir: string): string =
 
 proc tabBarBorderWidth(fontSize: float32): float32 =
   nk.em(TopBarBorderWidthEm).resolveLayoutLength(fontSize)
+
+proc installNeonimAppearance(app: nk.Application) =
+  if app.isNil:
+    return
+  var appearance = nk.initAppearance()
+  let selector =
+    nk.initStyleSelector(nk.srMonoTextView, classes = @[NeonimEditorStyleClass])
+  appearance.theme[selector, nk.StyleFill] = nk.fill(nk.initColor(0.0, 0.0, 0.0, 0.0))
+  appearance.theme[selector, nk.StyleChrome] = nk.styleKeyword(nk.DefaultChromeName)
+  appearance.theme[selector, nk.StyleBorderWidth] = 0.0'f32
+  appearance.theme[selector, nk.StyleCornerRadius] = 0.0'f32
+  appearance.theme[selector, nk.StyleFocusRingWidth] = 0.0'f32
+  appearance.theme[selector, nk.StyleFocusRingInset] = 0.0'f32
+  appearance.theme[selector, nk.StyleBoxShadows] = newSeq[nk.BoxShadow]()
+  app.setAppearance(appearance)
 
 protocol NeonimTabBarDrawing of nk.ViewDrawingProtocol:
   method draw(tabBar: NeonimTabBar, context: nk.DrawContext) =
@@ -560,7 +576,7 @@ proc monoCellFor(
       else:
         state.colors.bg,
     hasForegroundColor = true,
-    hasBackgroundColor = bg.isSome,
+    hasBackgroundColor = true,
   )
 
 proc syncEditorView(runtime: GuiRuntime) =
@@ -1212,8 +1228,9 @@ proc newNeonimTabBar(runtime: GuiRuntime): NeonimTabBar =
   result.runtime = runtime
   discard result.withProtocol(NeonimTabBarDrawing)
 
-proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect) =
+proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect, showNativeWindow = true) =
   runtime.app = nk.sharedApplication()
+  runtime.app.installNeonimAppearance()
   runtime.kitWindow = nk.newWindow(runtime.config.windowTitle, frame = frame)
   runtime.rootView = nk.newView()
   runtime.layoutView = nk.newStackView(nk.laVertical)
@@ -1258,6 +1275,8 @@ proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect) =
   runtime.editor.fontName = runtime.config.fontTypeface
   runtime.editor.fontSize = runtime.config.fontSize
   runtime.editor.padding = 0.0'f32
+  runtime.editor.styleClasses = @[NeonimEditorStyleClass]
+  runtime.editor.backgroundColor = initLineGridState(1, 1).colors.bg
   runtime.editor.rawEventPolicy = nk.initMonoTextRawEventPolicy(
     forwardedEvents = nk.AllMonoTextRawEvents, capturedEvents = nk.AllMonoTextRawEvents
   )
@@ -1287,10 +1306,11 @@ proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect) =
   runtime.kitWindow.setContentView(runtime.rootView)
   runtime.app.addWindow(runtime.kitWindow)
   discard runtime.kitWindow.makeFirstResponder(runtime.editor)
-  runtime.kitWindow.makeKeyAndOrderFront()
+  if showNativeWindow:
+    runtime.kitWindow.makeKeyAndOrderFront()
 
 proc initGuiRuntime*(
-    config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig()
+    config: GuiConfig, testCfg: GuiTestConfig = GuiTestConfig(), showNativeWindow = true
 ): GuiRuntime =
   new(result)
   initResponder(result)
@@ -1316,7 +1336,7 @@ proc initGuiRuntime*(
   result.cursorVisible = true
   result.baseMainDir = guessMainDir(config.nvimArgs)
   result.topBarHeight = TopBarHeight
-  result.buildNimKitViews(frame)
+  result.buildNimKitViews(frame, showNativeWindow)
   result.updateRuntimeMonoMetrics()
   warn "mono metrics: ", cellW = result.cellW, cellH = result.cellH
 
