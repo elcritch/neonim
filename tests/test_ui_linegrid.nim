@@ -463,6 +463,7 @@ suite "ui linegrid":
   test "hl_attr_define populates hl table":
     var state = initLineGridState(1, 1)
     var hl = HlState(attrs: initTable[int64, HlAttr]())
+    state.needsRedraw = false
 
     let params = packRedraw(
       proc(s: var MsgStream) =
@@ -489,6 +490,7 @@ suite "ui linegrid":
     check hl.attrs[2].bg.isSome
     check hl.attrs[2].fg.get == rgba(0'u8, 0'u8, 255'u8, 255).color
     check hl.attrs[2].bg.get == rgba(0'u8, 255'u8, 0'u8, 255).color
+    check state.needsRedraw
 
   test "hl_attr_define records reverse attrs":
     var state = initLineGridState(1, 1)
@@ -515,7 +517,7 @@ suite "ui linegrid":
     check hl.attrs.hasKey(3)
     check hl.attrs[3].reverse
 
-  test "flush marks state as needing redraw":
+  test "flush alone does not mark state as needing redraw":
     var state = initLineGridState(1, 1)
     var hl = HlState(attrs: initTable[int64, HlAttr]())
     state.needsRedraw = false
@@ -525,7 +527,7 @@ suite "ui linegrid":
         packEvent(s, "flush")
     )
     handleRedraw(state, hl, params)
-    check state.needsRedraw
+    check not state.needsRedraw
 
   test "cmdline_show overlays rendered bottom row":
     var state = initLineGridState(3, 10)

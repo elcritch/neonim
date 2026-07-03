@@ -460,6 +460,7 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
     of "hl_attr_define":
       for _ in 1 ..< evLen:
         handleHlAttrDefine(hl, s)
+      state.needsRedraw = true
     of "grid_resize":
       for _ in 1 ..< evLen:
         let itemLen = s.unpack_array()
@@ -715,7 +716,6 @@ proc handleRedraw*(state: var LineGridState, hl: var HlState, params: RpcParamsB
     of "flush":
       for _ in 1 ..< evLen:
         s.skip_msg()
-      state.needsRedraw = true
     else:
       for _ in 1 ..< evLen:
         s.skip_msg()
