@@ -38,12 +38,16 @@ jobs:
 
       - name: Install Nim
         run: |
-          grabnim 2.2.6
+          grabnim 2.2.10
           nim -v
 
       - name: Install Atlas
         run: |
-          nimble install -y 'https://github.com/nim-lang/atlas@#master'
+          mkdir -p "$HOME/.local/bin"
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          curl -fsSL https://raw.githubusercontent.com/nim-lang/atlas/HEAD/install.sh | \
+            ATLAS_INSTALL_DIR="$HOME/.local/bin" bash -
           atlas -v
 
       - name: Cache packages
@@ -85,12 +89,16 @@ jobs:
 
       - name: Install Nim
         run: |
-          grabnim 2.2.6
+          grabnim 2.2.10
           nim -v
 
       - name: Install Atlas
         run: |
-          nimble install -y 'https://github.com/nim-lang/atlas@#master'
+          mkdir -p "$HOME/.local/bin"
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          curl -fsSL https://raw.githubusercontent.com/nim-lang/atlas/HEAD/install.sh | \
+            ATLAS_INSTALL_DIR="$HOME/.local/bin" bash -
           atlas -v
 
       - name: Cache packages
@@ -127,12 +135,16 @@ jobs:
       - name: Install Nim
         uses: jiro4989/setup-nim-action@v2
         with:
-          nim-version: "2.2.6"
+          nim-version: "2.2.10"
 
       - name: Install Atlas
-        shell: pwsh
+        shell: bash
         run: |
-          nimble install -y 'https://github.com/nim-lang/atlas@#master'
+          mkdir -p "$HOME/.local/bin"
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          curl -fsSL https://raw.githubusercontent.com/nim-lang/atlas/HEAD/install.sh | \
+            ATLAS_INSTALL_DIR="$HOME/.local/bin" bash -
           atlas -v
 
       - name: Cache packages

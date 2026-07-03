@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         nimversion:
-          - '2.2.6'
+          - '2.2.10'
         os:
           - ubuntu-24.04
           - macos-14
@@ -64,7 +64,11 @@ jobs:
 
     - name: Install Atlas
       run: |
-        nimble install 'https://github.com/elcritch/atlas@#lazy-load-historical-deps'
+        mkdir -p "$HOME/.local/bin"
+        export PATH="$HOME/.local/bin:$PATH"
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        curl -fsSL https://raw.githubusercontent.com/nim-lang/atlas/HEAD/install.sh | \
+          ATLAS_INSTALL_DIR="$HOME/.local/bin" bash -
         echo "Nim:: "
         nim -v
         echo "Atlas:: "
