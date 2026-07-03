@@ -1,17 +1,8 @@
-when defined(emscripten):
-  import std/[unicode, options, tables]
-else:
-  import std/[unicode, options, tables]
+import std/[options, tables, unicode]
 
 import chroma
-import pkg/pixie/fonts
+import vmath
 import figdraw/windowing/siwinshim as siwin
-
-import figdraw/[commons, fignodes, figrender]
-import figdraw/common/fonttypes
-
-when not UseMetalBackend:
-  import figdraw/utils/glutils
 
 import ./[ui_linegrid]
 
@@ -29,22 +20,11 @@ else:
 
 type
   ModifierView* = set[siwin.ModifierKey]
-  MouseButtonView* = set[siwin.MouseButton]
 
   CmdShortcutAction* = enum
     csaNone
     csaCopy
     csaPaste
-
-proc monoMetrics*(font: FigFont): tuple[advance: float32, lineHeight: float32] =
-  let (_, px) = font.convertFont()
-  let lineH =
-    if px.lineHeight >= 0:
-      px.lineHeight
-    else:
-      px.defaultLineHeight()
-  let adv = (px.typeface.getAdvance(Rune('M')) * px.scale)
-  (adv, lineH / 2)
 
 proc ctrlKeyToNvimInput(key: siwin.Key): string =
   case key
@@ -238,19 +218,6 @@ proc multiClickToNvimInput*(clickCount, row, col: int): string =
     return ""
   "<" & $clickCount & "-LeftMouse><" & $col & "," & $row & ">"
 
-proc mouseDragButtonToNvimButton*(buttons: MouseButtonView): string =
-  if siwin.MouseButton.left in buttons:
-    return "left"
-  if siwin.MouseButton.right in buttons:
-    return "right"
-  if siwin.MouseButton.middle in buttons:
-    return "middle"
-  if siwin.MouseButton.forward in buttons:
-    return "x1"
-  if siwin.MouseButton.backward in buttons:
-    return "x2"
-  ""
-
 proc mouseModifierFlags*(modifiers: ModifierView): string =
   if siwin.ModifierKey.control in modifiers:
     result.add "C"
@@ -260,24 +227,6 @@ proc mouseModifierFlags*(modifiers: ModifierView): string =
     result.add "A"
   if siwin.ModifierKey.system in modifiers:
     result.add "D"
-
-proc inputPosToLogical*(
-    inputPos: Vec2, usesBackingPixels: bool, inputScale: float32
-): Vec2 =
-  if not usesBackingPixels:
-    return inputPos
-  let scale = if inputScale > 0.0'f32: inputScale else: 1.0'f32
-  inputPos / scale
-
-proc mouseGridCell*(
-    mousePos: Vec2, rows, cols: int, cellW, cellH: float32
-): tuple[row, col: int] =
-  if rows <= 0 or cols <= 0 or cellW <= 0 or cellH <= 0:
-    return (0, 0)
-  let rawCol = int(mousePos.x / cellW)
-  let rawRow = int(mousePos.y / (2 * cellH))
-  result.col = min(cols - 1, max(0, rawCol))
-  result.row = min(rows - 1, max(0, rawRow))
 
 proc mouseScrollActions*(
     delta: Vec2,
@@ -326,24 +275,6 @@ proc isVisualLikeMode*(mode: string): bool =
   if mode.len == 0:
     return false
   mode[0] in {'v', 'V', char(0x16), 's', 'S', char(0x13)}
-
-proc buildOverlayLayout(
-    monoFont: FigFont,
-    state: LineGridState,
-    text: string,
-    fg: Color,
-    x0, y0, cellW: float32,
-): GlyphArrangement =
-  var glyphs: seq[(Rune, Vec2)]
-  glyphs.setLen(state.cols)
-  var x = x0
-  for col in 0 ..< state.cols:
-    var r: Rune = Rune(' ')
-    if col < text.len:
-      r = Rune(text[col])
-    glyphs[col] = (r, vec2(x, y0))
-    x += cellW
-  placeGlyphs(fs(monoFont, fg), glyphs, origin = GlyphTopLeft)
 
 proc resolveColors(
     state: LineGridState, hl: HlState, hlId: int64
@@ -400,18 +331,15 @@ proc resolveCursorColors(
     result.fill = attr.fg.get()
     result.text = cellBg
 
-proc cursorRect(style: CursorStyle, cx, cy, cellW, cellH: float32): Rect =
-  let fullH = 2 * cellH
-  let pct = max(1, min(100, style.cellPercentage)).float32 / 100.0'f32
-  case style.shape
-  of csBlock:
-    rect(cx, cy, cellW, fullH)
-  of csVertical:
-    let cw = max(1.0'f32, cellW * pct)
-    rect(cx, cy, cw, fullH)
-  of csHorizontal:
-    let ch = max(1.0'f32, fullH * pct)
-    rect(cx, cy + fullH - ch, cellW, ch)
+proc resolveCellColors*(
+    state: LineGridState, hl: HlState, hlId: int64
+): tuple[fg: Color, bg: Option[Color]] =
+  resolveColors(state, hl, hlId)
+
+proc resolveCursorCellColors*(
+    state: LineGridState, hl: HlState, cell: Cell, style: CursorStyle
+): tuple[fill: Color, text: Color] =
+  resolveCursorColors(state, hl, cell, style)
 
 proc runeForCell(cell: Cell): Rune =
   for rr in cell.text.runes:
@@ -462,226 +390,15 @@ proc fallbackPaneCols(
     return (0, state.cols)
   (left, right)
 
-proc addRowRun(
-    renders: var Renders,
-    baseZ: ZLevel,
-    rootIdx: FigIdx,
-    monoFont: FigFont,
-    state: LineGridState,
-    row: int,
-    startCol, endCol: int,
-    fg: Color,
-    bg: Option[Color],
-    cellW, cellH: float32,
-) =
-  let y = row.float32 * cellH
-  let x = startCol.float32 * cellW
-  let w = (endCol - startCol).float32 * cellW
-  if bg.isSome:
-    discard renders.addChild(
-      baseZ,
-      rootIdx,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: baseZ,
-        screenBox: rect(x, 2 * y, w, 2 * cellH),
-        fill: bg.get(),
-      ),
-    )
-
-  var glyphs: seq[(Rune, Vec2)]
-  glyphs.setLen(endCol - startCol)
-  var gx = 0'f32
-  for col in startCol ..< endCol:
-    let cell = state.cells[state.cellIndex(row, col)]
-    # Positions are relative to the node origin; screenBox provides the run offset.
-    glyphs[col - startCol] = (runeForCell(cell), vec2(gx, y))
-    gx += cellW
-  let layout = placeGlyphs(fs(monoFont, fg), glyphs, origin = GlyphTopLeft)
-  discard renders.addChild(
-    baseZ,
-    rootIdx,
-    Fig(
-      kind: nkText,
-      childCount: 0,
-      zlevel: baseZ,
-      screenBox: rect(x, y, w, cellH),
-      fill: fg,
-      textLayout: layout,
-    ),
-  )
-
-proc makeRenderTree*(
-    w, h: float32,
-    monoFont: FigFont,
-    state: LineGridState,
-    hl: HlState,
-    cellW, cellH: float32,
-    cursorVisible = true,
-): Renders =
-  var renders = Renders()
-  let baseZ = 0.ZLevel
-  let overlayZ = 1.ZLevel
-
-  let rootIdx = renders.addRoot(
-    baseZ,
-    Fig(
-      kind: nkRectangle,
-      childCount: 0,
-      zlevel: baseZ,
-      screenBox: rect(0, 0, w, h),
-      fill: state.colors.bg,
-    ),
-  )
-
-  for row in 0 ..< state.rows:
-    var col = 0
-    while col < state.cols:
-      let cell = state.cells[state.cellIndex(row, col)]
-      let colors = resolveColors(state, hl, cell.hlId)
-      let runFg = colors.fg
-      let runBg = colors.bg
-      var endCol = col + 1
-      while endCol < state.cols:
-        let nextCell = state.cells[state.cellIndex(row, endCol)]
-        let nextColors = resolveColors(state, hl, nextCell.hlId)
-        if nextColors.fg != runFg or nextColors.bg != runBg:
-          break
-        endCol.inc
-      addRowRun(
-        renders, baseZ, rootIdx, monoFont, state, row, col, endCol, runFg, runBg, cellW,
-        cellH,
-      )
-      col = endCol
-
-  if state.wildmenuActive and state.rows >= 2:
-    let row = state.rows - 2
-    let y = row.float32 * cellH
-    discard renders.addRoot(
-      overlayZ,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: overlayZ,
-        screenBox: rect(0, 2 * y, w, 2 * cellH),
-        fill: state.colors.bg,
-      ),
-    )
-    let layout = buildOverlayLayout(
-      monoFont, state, state.wildmenuText, state.colors.fg, 0'f32, y, cellW
-    )
-    discard renders.addRoot(
-      overlayZ,
-      Fig(
-        kind: nkText,
-        childCount: 0,
-        zlevel: overlayZ,
-        screenBox: rect(0, y, w, cellH),
-        fill: state.colors.fg,
-        textLayout: layout,
-      ),
-    )
-
-  if state.cmdlineActive:
-    let row = state.rows - 1
-    let y = row.float32 * cellH
-    discard renders.addRoot(
-      overlayZ,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: overlayZ,
-        screenBox: rect(0, 2 * y, w, 2 * cellH),
-        fill: state.colors.bg,
-      ),
-    )
-    let layout = buildOverlayLayout(
-      monoFont, state, state.cmdlineText, state.colors.fg, 0'f32, y, cellW
-    )
-    discard renders.addRoot(
-      overlayZ,
-      Fig(
-        kind: nkText,
-        childCount: 0,
-        zlevel: overlayZ,
-        screenBox: rect(0, y, w, cellH),
-        fill: state.colors.fg,
-        textLayout: layout,
-      ),
-    )
-
-  if state.panelHighlightRow >= 0 and state.panelHighlightRow < state.rows:
-    let py = state.panelHighlightRow.float32 * 2 * cellH
-    var px = 0'f32
-    var pw = w
-    var usedWinRect = false
-    if state.cursorGrid != 0 and state.winRects.hasKey(state.cursorGrid):
-      let winRect = state.winRects[state.cursorGrid]
-      if state.panelHighlightRow >= winRect.row and
-          state.panelHighlightRow < winRect.row + winRect.rows:
-        px = winRect.col.float32 * cellW
-        pw = winRect.cols.float32 * cellW
-        usedWinRect = true
-    if not usedWinRect:
-      let (startCol, endColExclusive) =
-        state.fallbackPaneCols(state.panelHighlightRow, state.panelHighlightCol)
-      px = startCol.float32 * cellW
-      pw = max(1, endColExclusive - startCol).float32 * cellW
-    discard renders.addRoot(
-      overlayZ,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: overlayZ,
-        screenBox: rect(px, py, pw, 2 * cellH),
-        fill: PanelHighlightFill,
-      ),
-    )
-
-  if cursorVisible and state.cursorRow >= 0 and state.cursorRow < state.rows and
-      state.cursorCol >= 0 and state.cursorCol < state.cols:
-    let cx = state.cursorCol.float32 * cellW
-    let cy = state.cursorRow.float32 * 2 * cellH
-    let style = state.currentCursorStyle()
-    let cell = state.renderedCell(state.cursorRow, state.cursorCol)
-    let cursorColors = resolveCursorColors(state, hl, cell, style)
-    let cursorFill =
-      if state.cursorStyleEnabled:
-        cursorColors.fill
-      else:
-        rgba(220, 220, 220, 80).color
-    discard renders.addRoot(
-      overlayZ,
-      Fig(
-        kind: nkRectangle,
-        childCount: 0,
-        zlevel: overlayZ,
-        screenBox:
-          if state.cursorStyleEnabled:
-            cursorRect(style, cx, cy, cellW, cellH)
-          else:
-            rect(cx, cy, cellW, 2 * cellH),
-        fill: cursorFill,
-      ),
-    )
-    if state.cursorStyleEnabled and style.shape == csBlock:
-      let textY = state.cursorRow.float32 * cellH
-      let layout = placeGlyphs(
-        fs(monoFont, cursorColors.text),
-        @[(runeForCell(cell), vec2(0'f32, textY))],
-        origin = GlyphTopLeft,
-      )
-      discard renders.addRoot(
-        overlayZ,
-        Fig(
-          kind: nkText,
-          childCount: 0,
-          zlevel: overlayZ,
-          screenBox: rect(cx, textY, cellW, cellH),
-          fill: cursorColors.text,
-          textLayout: layout,
-        ),
-      )
-
-  result = renders
+proc panelHighlightColumns*(
+    state: LineGridState
+): tuple[startCol, endColExclusive: int] =
+  result = (0, max(1, state.cols))
+  if state.panelHighlightRow < 0 or state.panelHighlightRow >= state.rows:
+    return
+  if state.cursorGrid != 0 and state.winRects.hasKey(state.cursorGrid):
+    let winRect = state.winRects[state.cursorGrid]
+    if state.panelHighlightRow >= winRect.row and
+        state.panelHighlightRow < winRect.row + winRect.rows:
+      return (winRect.col, winRect.col + winRect.cols)
+  result = state.fallbackPaneCols(state.panelHighlightRow, state.panelHighlightCol)

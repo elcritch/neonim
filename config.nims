@@ -3,6 +3,8 @@
 --debugger:native
 --stacktrace:off
 --define:nimStackTraceOverride
+--define:sigilsSigilNameString
+
 when defined(bsd):
   --define:libbacktraceUseSystemLibs
 
