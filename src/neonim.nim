@@ -1092,11 +1092,13 @@ proc tryResizeUi*(runtime: GuiRuntime) =
     return
   let sz = runtime.contentLogicalSize()
   let newSz = computeGridSize(sz, runtime.cellW, runtime.cellH)
+  var resized = false
   for tab in runtime.tabs:
     if tab.isNil or tab.state.isNil:
       continue
     if newSz.rows == tab.state.rows and newSz.cols == tab.state.cols:
       continue
+    resized = true
     tab.state[].resize(newSz.rows, newSz.cols)
     if not tab.client.isNil and tab.client.isRunning():
       try:
@@ -1105,7 +1107,7 @@ proc tryResizeUi*(runtime: GuiRuntime) =
         )
       except CatchableError as err:
         warn "nvim_ui_try_resize failed", tabId = tab.id, error = err.msg
-  if not runtime.state.isNil:
+  if resized and not runtime.state.isNil:
     runtime.state.needsRedraw = true
 
 proc handleGuiTest*(runtime: GuiRuntime) =

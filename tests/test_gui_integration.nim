@@ -25,6 +25,32 @@ proc pressKey(runtime: GuiRuntime, key: nk.Key) =
   )
 
 suite "gui integration":
+  test "unchanged resize does not force redraw":
+    when defined(windows):
+      check true
+    else:
+      if getEnv("NEONIM_GUI_TEST") == "":
+        echo "SKIP: set NEONIM_GUI_TEST=1 to run GUI integration test"
+        check true
+      elif findExe("nvim").len == 0:
+        echo "SKIP: `nvim` not found in PATH"
+        check true
+      else:
+        let config = GuiConfig(
+          nvimCmd: "nvim",
+          nvimArgs: @["-u", "NONE", "-i", "NONE", "--noplugin", "-n"],
+          windowTitle: "neonim gui idle resize",
+          fontTypeface: "HackNerdFont-Regular.ttf",
+          fontSize: 16.0'f32,
+        )
+        let runtime = initGuiRuntime(config, showNativeWindow = false)
+        try:
+          runtime.state.needsRedraw = false
+          runtime.tryResizeUi()
+          check not runtime.state.needsRedraw
+        finally:
+          runtime.shutdownGui()
+
   test "window renders cmdline colon":
     when defined(windows):
       check true
