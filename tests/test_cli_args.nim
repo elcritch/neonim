@@ -42,6 +42,11 @@ suite "neonim cli args":
     let cfg = guiConfigFromCli(args)
     check cfg.nvimArgs == args
 
+  test "shortens long tab labels in the middle":
+    check shortenedTabLabel("long_name_with_suffix_abcde133", maxRunes = 20) ==
+      "long_name...abcde133"
+    check shortenedTabLabel("short_name", maxRunes = 20) == "short_name"
+
   test "font typeface reads NEONIM_FONT env override":
     let envKey = "NEONIM_FONT"
     let hadEnv = existsEnv(envKey)

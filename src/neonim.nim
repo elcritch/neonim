@@ -25,6 +25,11 @@ const
   TopBarHeight = 35.0'f32
   TopBarBorderWidthEm = 0.2'f32
   NeonimEditorStyleClass = "neonim-editor"
+  TabLabelMaxRunes = 28
+  TabLabelSuffixRunes = 8
+  TabLabelAverageWidthEm = 0.56'f32
+  TabLabelChromeWidth = 46.0'f32
+  TabLabelEllipsis = "..."
 
 type
   LineGridStateRef = ref LineGridState
@@ -146,6 +151,27 @@ proc guessMainDir(args: seq[string]): string =
     break
   normalizedPath(getCurrentDir())
 
+proc runeRangeToString(runes: openArray[Rune], first, lastExclusive: int): string =
+  for idx in first ..< lastExclusive:
+    result.add $runes[idx]
+
+proc shortenedTabLabel*(label: string, maxRunes = TabLabelMaxRunes): string =
+  let runes = label.toRunes()
+  if maxRunes <= 0:
+    return ""
+  if runes.len <= maxRunes:
+    return label
+
+  let ellipsisRunes = TabLabelEllipsis.toRunes().len
+  if maxRunes <= ellipsisRunes:
+    return runeRangeToString(runes, 0, maxRunes)
+
+  let
+    suffixRunes = min(TabLabelSuffixRunes, max(1, (maxRunes - ellipsisRunes) div 2))
+    prefixRunes = maxRunes - ellipsisRunes - suffixRunes
+  runeRangeToString(runes, 0, prefixRunes) & TabLabelEllipsis &
+    runeRangeToString(runes, runes.len - suffixRunes, runes.len)
+
 proc tabLabelForDir(mainDir: string): string =
   let normalized =
     if mainDir.len > 0:
@@ -156,12 +182,17 @@ proc tabLabelForDir(mainDir: string): string =
     return "~"
 
   let tail = splitPath(normalized).tail
-  if tail.len > 0: tail else: normalized
+  shortenedTabLabel(if tail.len > 0: tail else: normalized)
 
 proc tabBarBorderWidth(fontSize: float32): float32 =
   nk.em(TopBarBorderWidthEm).resolveLayoutLength(fontSize)
 
-proc installNeonimAppearance(app: nk.Application) =
+proc documentTabMaxWidth(fontSize: float32): float32 =
+  let labelWidth =
+    TabLabelMaxRunes.float32 * max(fontSize, 1.0'f32) * TabLabelAverageWidthEm
+  labelWidth + TabLabelChromeWidth
+
+proc installNeonimAppearance(app: nk.Application, fontSize: float32) =
   if app.isNil:
     return
   var appearance = nk.initAppearance()
@@ -174,6 +205,10 @@ proc installNeonimAppearance(app: nk.Application) =
   appearance.theme[selector, nk.StyleFocusRingWidth] = 0.0'f32
   appearance.theme[selector, nk.StyleFocusRingInset] = 0.0'f32
   appearance.theme[selector, nk.StyleBoxShadows] = newSeq[nk.BoxShadow]()
+
+  let tabSelector = nk.initStyleSelector(nk.srDocumentTab)
+  appearance.theme[tabSelector, nk.StyleMaximumSize] =
+    nk.initSize(documentTabMaxWidth(fontSize), 0.0'f32)
   app.setAppearance(appearance)
 
 protocol NeonimTabBarDrawing of nk.ViewDrawingProtocol:
@@ -1041,6 +1076,7 @@ proc adjustFontSize(runtime: GuiRuntime, delta: float32): bool =
   runtime.config.fontSize = next
   if not runtime.editor.isNil:
     runtime.editor.fontSize = next
+  runtime.app.installNeonimAppearance(next)
   runtime.updateRuntimeMonoMetrics()
   runtime.tryResizeUi()
   if not runtime.state.isNil:
@@ -1230,7 +1266,7 @@ proc newNeonimTabBar(runtime: GuiRuntime): NeonimTabBar =
 
 proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect, showNativeWindow = true) =
   runtime.app = nk.sharedApplication()
-  runtime.app.installNeonimAppearance()
+  runtime.app.installNeonimAppearance(runtime.config.fontSize)
   runtime.kitWindow = nk.newWindow(runtime.config.windowTitle, frame = frame)
   runtime.rootView = nk.newView()
   runtime.layoutView = nk.newStackView(nk.laVertical)
