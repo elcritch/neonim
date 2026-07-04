@@ -1058,7 +1058,9 @@ proc handleMonoTextRawEvent(runtime: GuiRuntime, event: nk.MonoTextRawEvent): bo
   of nk.mtreScrollWheel:
     runtime.modifiers = event.scrollEvent.modifiers.toSiwinModifiers()
     let actions = mouseScrollActions(
-      vec2(event.scrollEvent.deltaX, event.scrollEvent.deltaY),
+      merendaScrollDeltaToMouseScrollDelta(
+        event.scrollEvent.deltaX, event.scrollEvent.deltaY
+      ),
       speedMultiplier = runtime.scrollSpeedMultiplier,
       invertDirection = runtime.scrollDirectionInverted,
     )

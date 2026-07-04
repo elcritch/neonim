@@ -244,6 +244,9 @@ proc mouseScrollActions*(
   for _ in 0 ..< xSteps:
     result.add(if x > 0: "left" else: "right")
 
+proc merendaScrollDeltaToMouseScrollDelta*(deltaX, deltaY: float32): Vec2 =
+  vec2(-deltaX, deltaY)
+
 proc fontSizeDeltaForShortcut*(key: siwin.Key, modifiers: ModifierView): float32 =
   let zoomModifierDown =
     (siwin.ModifierKey.system in modifiers) or (siwin.ModifierKey.control in modifiers)

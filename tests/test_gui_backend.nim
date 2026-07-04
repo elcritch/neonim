@@ -32,6 +32,15 @@ suite "gui backend helpers":
     check mouseScrollActions(vec2(0, 10), speedMultiplier = 1.0'f32) == @["up"]
     check mouseScrollActions(vec2(0, 10), speedMultiplier = 3.0'f32) ==
       @["up", "up", "up"]
+    check mouseScrollActions(merendaScrollDeltaToMouseScrollDelta(10.0'f32, 0.0'f32)) ==
+      @["right"]
+    check mouseScrollActions(merendaScrollDeltaToMouseScrollDelta(-10.0'f32, 0.0'f32)) ==
+      @["left"]
+    check mouseScrollActions(merendaScrollDeltaToMouseScrollDelta(0.0'f32, 10.0'f32)) ==
+      @["up"]
+    check mouseScrollActions(
+      merendaScrollDeltaToMouseScrollDelta(10.0'f32, 0.0'f32), invertDirection = true
+    ) == @["left"]
 
   test "keyboard shortcuts and text input mapping":
     check fontSizeDeltaForShortcut(
