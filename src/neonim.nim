@@ -198,7 +198,7 @@ proc installNeonimAppearance(app: nk.Application, fontSize: float32) =
   var appearance = nk.initAppearance()
   let selector =
     nk.initStyleSelector(nk.srMonoTextView, classes = @[NeonimEditorStyleClass])
-  appearance.theme[selector, nk.StyleFill] = nk.fill(nk.initColor(0.0, 0.0, 0.0, 0.0))
+  appearance.theme[selector, nk.StyleFill] = nk.fill(nk.color(0.0, 0.0, 0.0, 0.0))
   appearance.theme[selector, nk.StyleChrome] = nk.styleKeyword(nk.DefaultChromeName)
   appearance.theme[selector, nk.StyleBorderWidth] = 0.0'f32
   appearance.theme[selector, nk.StyleCornerRadius] = 0.0'f32
@@ -224,7 +224,7 @@ protocol NeonimTabBarDrawing of nk.ViewDrawingProtocol:
       inset = borderWidth / 2.0'f32
       styleContext = nk.controlStyle(nk.srDocumentTabBar)
       borderColor = context.appearance.resolveColor(
-        styleContext, nk.StyleBorderColor, nk.initColor(0.58, 0.62, 0.70, 1.0)
+        styleContext, nk.StyleBorderColor, nk.color(0.58, 0.62, 0.70, 1.0)
       )
       topY = bounds.origin.y + inset
       bottomY = bounds.origin.y + bounds.size.height - inset
@@ -1283,7 +1283,7 @@ proc buildNimKitViews(runtime: GuiRuntime, frame: nk.Rect, showNativeWindow = tr
   runtime.newTabButton = nk.newButton("+")
   runtime.editor = newNeonimEditor(
     runtime,
-    nk.initRect(
+    nk.rect(
       0.0'f32,
       0.0'f32,
       frame.size.width,
@@ -1365,7 +1365,7 @@ proc initGuiRuntime*(
   result.scrollSpeedMultiplier = scrollSpeedMultiplierFromEnv()
   result.scrollDirectionInverted = scrollDirectionInvertedFromEnv()
   result.testStart = epochTime()
-  let frame = nk.initRect(120.0'f32, 120.0'f32, 1000.0'f32, 700.0'f32)
+  let frame = nk.rect(120.0'f32, 120.0'f32, 1000.0'f32, 700.0'f32)
   registerBundledTypeface(config.fontTypeface)
   registerBundledTypeface(config.defaultTypeface)
   registerBundledTypeface("HackNerdFont-Regular.ttf")
