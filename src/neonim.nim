@@ -800,15 +800,19 @@ proc copyVisualSelectionToClipboard(runtime: GuiRuntime): bool =
     warn "copy shortcut failed", error = err.msg
     return false
 
+proc clipboardTextForPaste(runtime: GuiRuntime): string =
+  if not runtime.kitWindow.isNil:
+    let nativeWindow = runtime.kitWindow.nativeWindowOrNil()
+    if not nativeWindow.isNil:
+      return nativeWindow.clipboard.text()
+    return nk.generalPasteboard().plainText()
+  if not runtime.window.isNil:
+    return runtime.window.clipboard.text()
+  ""
+
 proc pasteClipboard(runtime: GuiRuntime): bool =
   try:
-    let clipboardText =
-      if not runtime.kitWindow.isNil:
-        nk.generalPasteboard().plainText()
-      elif not runtime.window.isNil:
-        runtime.window.clipboard.text()
-      else:
-        ""
+    let clipboardText = runtime.clipboardTextForPaste()
     if clipboardText.len == 0:
       return true
     return runtime.safeRequest("nvim_paste", rpcPackParams(clipboardText, false, -1))
