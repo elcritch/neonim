@@ -560,7 +560,6 @@ protocol NeonimDocumentTabsDelegate of nk.DocumentTabsDelegate:
         runtime.activeTab = idx
         break
     runtime.syncActiveAliases()
-    runtime.syncDocumentTabs()
 
 proc monoCursorStyle(style: CursorStyle): nk.MonoTextCursorStyle =
   case style.shape

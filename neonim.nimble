@@ -12,7 +12,7 @@ requires "msgpack4nim"
 requires "chronicles"
 requires "https://github.com/elcritch/figdraw[siwin] >= 0.26.1"
 requires "libbacktrace"
-requires "gh:elcritch/merenda >= 0.6.3"
+requires "gh:elcritch/merenda >= 0.7.4"
 
 feature "references":
   requires "https://github.com/neovim/neovim"
