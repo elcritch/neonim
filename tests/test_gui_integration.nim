@@ -1,7 +1,9 @@
-import std/[os, times, unittest]
+import std/[os, strutils, times, unittest]
 
 import merenda/nimkit as nk
 import neonim
+import neonim/nvim_client
+import neonim/rpc
 import neonim/types
 
 proc pumpUntil(
@@ -25,6 +27,55 @@ proc pressKey(runtime: GuiRuntime, key: nk.Key) =
   )
 
 suite "gui integration":
+  test "command-c uses the Edit menu action to copy the Neovim visual selection":
+    when defined(windows):
+      check true
+    else:
+      if findExe("nvim").len == 0:
+        echo "SKIP: `nvim` not found in PATH"
+        check true
+      else:
+        let config = GuiConfig(
+          nvimCmd: "nvim",
+          nvimArgs: @["-u", "NONE", "-i", "NONE", "--noplugin", "-n"],
+          windowTitle: "neonim gui copy shortcut",
+          fontTypeface: "HackNerdFont-Regular.ttf",
+          fontSize: 16.0'f32,
+        )
+        let runtime = initGuiRuntime(config, showNativeWindow = false)
+        try:
+          discard runtime.kitWindow.makeFirstResponder(runtime.editor)
+          discard runtime.client.callAndWait(
+            "nvim_command",
+            rpcPackParams("call setline(1, 'alpha') | normal! gg0vll"),
+            timeout = 5.0,
+          )
+          runtime.kitWindow.ensureNativeWindow()
+          let nativeWindow = runtime.kitWindow.nativeWindowOrNil()
+          check not nativeWindow.isNil
+          runtime.app.setKeyWindow(runtime.kitWindow)
+          check runtime.app.performMenuKeyEquivalent(
+            nk.KeyEvent(
+              key: nk.keyC, keyCode: nk.keyC.ord, text: "c", modifiers: {nk.kmCommand}
+            )
+          )
+          check nk.generalPasteboard().plainText() == "alp"
+
+          discard nk.generalPasteboard().setPlainText("beta")
+          check runtime.app.performMenuKeyEquivalent(
+            nk.KeyEvent(
+              key: nk.keyV, keyCode: nk.keyV.ord, text: "v", modifiers: {nk.kmCommand}
+            )
+          )
+          let lineResp = runtime.client.callAndWait(
+            "nvim_get_current_line", rpcPackParams(), timeout = 5.0
+          )
+          var line = ""
+          rpcUnpack(lineResp.result, line)
+          check line.contains("beta")
+        finally:
+          runtime.shutdownGui()
+
   test "unchanged resize does not force redraw":
     when defined(windows):
       check true

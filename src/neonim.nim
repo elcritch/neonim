@@ -8,13 +8,13 @@ import libbacktrace
 import chroma
 import vmath
 import msgpack4nim
-import pkg/pixie as pixie except draw
+from pkg/pixie import Image, decodeImage, readImage
 import merenda/nimkit as nk except Rect, Size, Point, Color
 import sigils/core
 import siwin/[clipboards, colorutils]
 import figdraw/windowing/siwinshim as siwin
 
-import figdraw/commons except readImage
+import figdraw/common/fontutils
 import ./neonim/[types, rpc, nvim_client, ui_linegrid, gui_backend]
 
 const
@@ -729,68 +729,32 @@ proc rpcErrorText(buf: RpcParamsBuffer): string =
   except CatchableError:
     return "<non-string rpc error>"
 
-proc unpackStringOrBin(s: MsgStream): string =
-  if s.is_string():
-    let len = s.unpack_string()
-    if len < 0:
-      return ""
-    return s.readExactStr(len)
-  if s.is_bin():
-    let len = s.unpack_bin()
-    return s.readExactStr(len)
-  ""
-
-proc currentNvimMode(runtime: GuiRuntime): string =
-  if runtime.client.isNil or (not runtime.client.isRunning()):
-    return ""
-  try:
-    let resp =
-      runtime.client.callAndWait("nvim_get_mode", rpcPackParams(), timeout = 0.75)
-    if not resp.error.isNilValue:
-      warn "nvim_get_mode failed", error = rpcErrorText(resp.error)
-      return ""
-    var s = MsgStream.init(resp.result.buf.data)
-    s.setPosition(0)
-    if not s.is_map():
-      return ""
-    let mapLen = s.unpack_map()
-    for _ in 0 ..< mapLen:
-      if not (s.is_string() or s.is_bin()):
-        s.skip_msg()
-        s.skip_msg()
-        continue
-      let key = unpackStringOrBin(s)
-      if key == "mode":
-        if s.is_string() or s.is_bin():
-          return unpackStringOrBin(s)
-        s.skip_msg()
-      else:
-        s.skip_msg()
-  except CatchableError as err:
-    warn "failed to read nvim mode", error = err.msg
-  ""
-
 proc copyVisualSelectionToClipboard(runtime: GuiRuntime): bool =
-  let mode = runtime.currentNvimMode()
-  if not isVisualLikeMode(mode):
+  if runtime.client.isNil or (not runtime.client.isRunning()):
     return false
   try:
     let copyResp = runtime.client.callAndWait(
       "nvim_exec_lua",
       rpcPackParams(
         """
+local mode = vim.api.nvim_get_mode().mode
+if not mode:match("^[vVsS\\22\\19]") then
+  return ""
+end
 vim.cmd("normal! y")
 return vim.fn.getreg('"')
 """,
         newSeq[string](),
       ),
-      timeout = 0.75,
+      timeout = 2.0,
     )
     if not copyResp.error.isNilValue:
       warn "nvim yank failed", error = rpcErrorText(copyResp.error)
       return false
     var copiedText = ""
     rpcUnpack(copyResp.result, copiedText)
+    if copiedText.len == 0:
+      return false
     if not runtime.kitWindow.isNil:
       discard nk.generalPasteboard().setPlainText(copiedText)
     elif not runtime.window.isNil:
@@ -866,7 +830,7 @@ proc formatInputText(text: string): string {.used.} =
       result.add "\\u"
       result.add code.toHex(4)
 
-proc setWindowIcon(window: siwin.Window, image: pixie.Image): bool =
+proc setWindowIcon(window: siwin.Window, image: Image): bool =
   if window.isNil:
     return false
   if image.isNil or image.width <= 0 or image.height <= 0 or image.data.len == 0:
@@ -882,7 +846,7 @@ proc setWindowIcon(window: siwin.Window, image: pixie.Image): bool =
 
 proc trySetWindowIcon(window: siwin.Window) =
   try:
-    if window.setWindowIcon(pixie.decodeImage(EmbeddedWindowIconPng)):
+    if window.setWindowIcon(decodeImage(EmbeddedWindowIconPng)):
       return
     warn "failed to set embedded window icon", error = "decoded image was empty"
   except CatchableError as err:
@@ -893,7 +857,7 @@ proc trySetWindowIcon(window: siwin.Window) =
     warn "window icon not found", path = iconPath
     return
   try:
-    if not window.setWindowIcon(pixie.readImage(iconPath)):
+    if not window.setWindowIcon(readImage(iconPath)):
       warn "failed to set window icon", path = iconPath, error = "icon image was empty"
   except CatchableError as err:
     warn "failed to set window icon", path = iconPath, error = err.msg
@@ -1029,6 +993,17 @@ proc handleNeonimTextInput(editor: NeonimEditor, text: string) =
 protocol NeonimEditorInput of nk.TextInputProtocol:
   method insertText(editor: NeonimEditor, text: string) =
     editor.handleNeonimTextInput(text)
+
+protocol NeonimEditorClipboardCommands of nk.TextEditingCommandProtocol:
+  method copy(editor: NeonimEditor, args: nk.ActionArgs) =
+    discard args
+    if not editor.runtime.isNil:
+      discard editor.runtime.copyVisualSelectionToClipboard()
+
+  method paste(editor: NeonimEditor, args: nk.ActionArgs) =
+    discard args
+    if not editor.runtime.isNil:
+      discard editor.runtime.pasteClipboard()
 
 proc handleMonoTextRawEvent(runtime: GuiRuntime, event: nk.MonoTextRawEvent): bool =
   if runtime.isNil:
@@ -1265,6 +1240,7 @@ proc newNeonimEditor(runtime: GuiRuntime, frame: nk.Rect): NeonimEditor =
   nk.initMonoTextViewFields(result, frame = frame, editable = true)
   result.runtime = runtime
   discard result.withProtocol(NeonimEditorInput)
+  discard result.withProtocol(NeonimEditorClipboardCommands)
 
 proc newNeonimTabBar(runtime: GuiRuntime): NeonimTabBar =
   result = NeonimTabBar()
