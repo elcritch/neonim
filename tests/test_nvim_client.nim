@@ -210,6 +210,45 @@ suite "neovim client":
         check resp.error.isNilValue
         check rpcUnpack[string](resp.result) == "ok"
 
+  test "nvim_exec_lua yanks a visual selection synchronously":
+    when defined(windows):
+      check true
+    else:
+      if findExe("nvim").len == 0:
+        echo "SKIP: `nvim` not found in PATH"
+        check true
+      else:
+        let client = newNeovimClient()
+        defer:
+          client.stop()
+
+        client.start(
+          nvimCmd = "nvim",
+          args = @["--headless", "-u", "NONE", "-i", "NONE", "--noplugin", "-n"],
+        )
+        discard client.discoverMetadata()
+
+        let setupResp = client.callAndWait(
+          "nvim_command",
+          rpcPackParams("call setline(1, 'alpha') | normal! gg0vll"),
+          timeout = 10.0,
+        )
+        check setupResp.error.isNilValue
+
+        let yankResp = client.callAndWait(
+          "nvim_exec_lua",
+          rpcPackParams(
+            """
+vim.cmd("normal! y")
+return vim.fn.getreg('"')
+""",
+            newSeq[string](),
+          ),
+          timeout = 10.0,
+        )
+        check yankResp.error.isNilValue
+        check rpcUnpack[string](yankResp.result) == "alp"
+
   test "nvim_command executes ex":
     when defined(windows):
       check true

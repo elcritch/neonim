@@ -775,21 +775,22 @@ proc copyVisualSelectionToClipboard(runtime: GuiRuntime): bool =
   if not isVisualLikeMode(mode):
     return false
   try:
-    let yankResp =
-      runtime.client.callAndWait("nvim_input", rpcPackParams("y"), timeout = 0.75)
-    if not yankResp.error.isNilValue:
-      warn "nvim yank failed", error = rpcErrorText(yankResp.error)
-      return false
-
-    let regResp = runtime.client.callAndWait(
-      "nvim_eval", rpcPackParams("getreg('\"')"), timeout = 0.75
+    let copyResp = runtime.client.callAndWait(
+      "nvim_exec_lua",
+      rpcPackParams(
+        """
+vim.cmd("normal! y")
+return vim.fn.getreg('"')
+""",
+        newSeq[string](),
+      ),
+      timeout = 0.75,
     )
-    if not regResp.error.isNilValue:
-      warn "nvim getreg failed", error = rpcErrorText(regResp.error)
+    if not copyResp.error.isNilValue:
+      warn "nvim yank failed", error = rpcErrorText(copyResp.error)
       return false
-
     var copiedText = ""
-    rpcUnpack(regResp.result, copiedText)
+    rpcUnpack(copyResp.result, copiedText)
     if not runtime.kitWindow.isNil:
       discard nk.generalPasteboard().setPlainText(copiedText)
     elif not runtime.window.isNil:

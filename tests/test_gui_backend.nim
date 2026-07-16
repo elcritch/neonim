@@ -95,10 +95,10 @@ suite "gui backend helpers":
       check clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.system}))
       check not clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.control}))
     else:
+      check clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.control}))
       check clipboardShortcutModifierDown(
         ModifierView({siwin.ModifierKey.control, siwin.ModifierKey.shift})
       )
-      check not clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.control}))
       check not clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.shift}))
       check not clipboardShortcutModifierDown(ModifierView({siwin.ModifierKey.system}))
     check isVisualLikeMode("v")

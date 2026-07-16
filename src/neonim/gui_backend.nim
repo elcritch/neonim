@@ -272,7 +272,7 @@ proc clipboardShortcutModifierDown*(modifiers: ModifierView): bool =
   when defined(macosx):
     siwin.ModifierKey.system in modifiers
   else:
-    (siwin.ModifierKey.control in modifiers) and (siwin.ModifierKey.shift in modifiers)
+    siwin.ModifierKey.control in modifiers
 
 proc isVisualLikeMode*(mode: string): bool =
   if mode.len == 0:
