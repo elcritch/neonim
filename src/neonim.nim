@@ -195,7 +195,7 @@ proc documentTabMaxWidth(fontSize: float32): float32 =
 proc installNeonimAppearance(app: nk.Application, fontSize: float32) =
   if app.isNil:
     return
-  var appearance = nk.initAppearance()
+  var appearance = nk.initAppearance(app.effectiveAppearance().theme)
   let selector =
     nk.initStyleSelector(nk.srMonoTextView, classes = @[NeonimEditorStyleClass])
   appearance.theme[selector, nk.StyleFill] = nk.fill(nk.color(0.0, 0.0, 0.0, 0.0))

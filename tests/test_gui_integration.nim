@@ -21,12 +21,48 @@ proc pumpFor(runtime: GuiRuntime, duration = 0.25) =
   while runtime.appRunning and epochTime() - startTime <= duration:
     discard runtime.stepGui()
 
-proc pressKey(runtime: GuiRuntime, key: nk.Key) =
+proc pressKey(runtime: GuiRuntime, key: nk.Key, modifiers: set[nk.KeyModifier] = {}) =
   discard runtime.kitWindow.dispatchKeyDown(
-    nk.KeyEvent(key: key, keyCode: key.ord, text: "", modifiers: {})
+    nk.KeyEvent(key: key, keyCode: key.ord, text: "", modifiers: modifiers)
   )
 
 suite "gui integration":
+  test "font shortcuts preserve the active Merenda theme":
+    when defined(windows):
+      check true
+    else:
+      if findExe("nvim").len == 0:
+        echo "SKIP: `nvim` not found in PATH"
+        check true
+      else:
+        let config = GuiConfig(
+          nvimCmd: "nvim",
+          nvimArgs: @["-u", "NONE", "-i", "NONE", "--noplugin", "-n"],
+          windowTitle: "neonim gui font shortcut theme",
+          fontTypeface: "HackNerdFont-Regular.ttf",
+          fontSize: 16.0'f32,
+        )
+        let runtime = initGuiRuntime(config, showNativeWindow = false)
+        let previousAppearance = runtime.app.appearance()
+        try:
+          let peachyAppearance = nk.initAppearance(nk.initPeachyTheme())
+          let buttonStyle = nk.controlStyle(nk.srButton)
+          let peachyBorderColor = peachyAppearance.resolveColor(
+            buttonStyle, nk.StyleBorderColor, nk.color(0.0, 0.0, 0.0, 1.0)
+          )
+          runtime.app.setAppearance(peachyAppearance)
+
+          runtime.pressKey(nk.keyEqual, {nk.kmCommand})
+          check runtime.config.fontSize == 17.0'f32
+          runtime.pressKey(nk.keyMinus, {nk.kmCommand})
+          check runtime.config.fontSize == 16.0'f32
+          check runtime.app.effectiveAppearance().resolveColor(
+            buttonStyle, nk.StyleBorderColor, nk.color(0.0, 0.0, 0.0, 1.0)
+          ) == peachyBorderColor
+        finally:
+          runtime.app.setAppearance(previousAppearance)
+          runtime.shutdownGui()
+
   test "command-c uses the Edit menu action to copy the Neovim visual selection":
     when defined(windows):
       check true
